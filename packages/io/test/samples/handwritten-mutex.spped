@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="/xsl/spped2svg.xsl"?>
+<!-- Hand-written in the layout of Snoopy 1.21 "Petri Net" files (see README.md). -->
+<Snoopy version="2" revision="1.21">
+  <netclass name="Petri Net"/>
+  <nodeclasses count="4">
+    <nodeclass count="2" name="Place">
+      <node id="10" net="1">
+        <attribute name="Name" id="11" net="1">
+          <![CDATA[idle]]>
+          <graphics count="1">
+            <graphic yoff="20.00" x="100.00" y="120.00" id="12" net="1" show="1" grparent="20" state="1" pen="0,0,0" brush="255,255,255"/>
+          </graphics>
+        </attribute>
+        <attribute name="ID" id="13" net="1">
+          <![CDATA[0]]>
+          <graphics count="1">
+            <graphic xoff="25.00" yoff="20.00" x="125.00" y="120.00" id="14" net="1" show="0" grparent="20" state="1" pen="0,0,0" brush="255,255,255"/>
+          </graphics>
+        </attribute>
+        <attribute name="Marking" id="15" net="1">
+          <![CDATA[ 2]]>
+          <graphics count="1">
+            <graphic x="100.00" y="100.00" id="16" net="1" show="1" grparent="20" state="1" pen="0,0,0" brush="255,255,255"/>
+          </graphics>
+        </attribute>
+        <attribute name="Logic" id="17" net="1">
+          <![CDATA[0]]>
+          <graphics count="0"/>
+        </attribute>
+        <attribute name="Comment" id="18" net="1">
+          <![CDATA[processes waiting]]>
+          <graphics count="1">
+            <graphic yoff="40.00" x="100.00" y="140.00" id="19" net="1" show="1" grparent="20" state="1" pen="0,0,0" brush="255,255,255"/>
+          </graphics>
+        </attribute>
+        <graphics count="1">
+          <graphic x="100.00" y="100.00" id="20" net="1" show="1" w="20.00" h="20.00" state="1" pen="0,0,0" brush="255,0,0"/>
+        </graphics>
+      </node>
+      <node id="30" net="1">
+        <attribute name="Name" id="31" net="1">
+          <![CDATA[critical]]>
+          <graphics count="1">
+            <graphic xoff="30.00" yoff="20.00" x="230.00" y="120.00" id="32" net="1" show="1" grparent="40" state="1" pen="0,0,0" brush="255,255,255"/>
+          </graphics>
+        </attribute>
+        <attribute name="ID" id="33" net="1">
+          <![CDATA[1]]>
+          <graphics count="0"/>
+        </attribute>
+        <attribute name="Marking" id="35" net="1">
+          <![CDATA[0]]>
+          <graphics count="0"/>
+        </attribute>
+        <graphics count="1">
+          <graphic x="200.00" y="100.00" id="40" net="1" show="1" w="20.00" h="20.00" state="1" pen="0,0,0" brush="255,255,255"/>
+        </graphics>
+      </node>
+    </nodeclass>
+    <nodeclass count="2" name="Transition">
+      <node id="50" net="1">
+        <attribute name="Name" id="51" net="1">
+          <![CDATA[enter]]>
+          <graphics count="0"/>
+        </attribute>
+        <graphics count="1">
+          <graphic x="150.00" y="70.00" id="52" net="1" show="1" w="8.00" h="20.00" state="1" pen="0,0,0" brush="255,255,255"/>
+        </graphics>
+      </node>
+      <node id="60" net="1">
+        <attribute name="Name" id="61" net="1">
+          <![CDATA[leave]]>
+          <graphics count="0"/>
+        </attribute>
+        <graphics count="1">
+          <graphic x="150.00" y="130.00" id="62" net="1" show="1" w="8.00" h="20.00" state="1" pen="0,0,0" brush="255,255,255"/>
+        </graphics>
+      </node>
+    </nodeclass>
+    <nodeclass count="0" name="Coarse Place"/>
+    <nodeclass count="0" name="Coarse Transition"/>
+  </nodeclasses>
+  <edgeclasses count="1">
+    <edgeclass count="4" name="Edge">
+      <edge source="10" target="50" id="70" net="1">
+        <attribute name="Multiplicity" id="71" net="1">
+          <![CDATA[1]]>
+          <graphics count="0"/>
+        </attribute>
+        <graphics count="1">
+          <graphic id="72" net="1" source="20" target="52" state="1" show="1" pen="0,0,0" brush="0,0,0" edge_designtype="3">
+            <points count="3">
+              <point x="100.00" y="90.00"/>
+              <point x="100.00" y="70.00"/>
+              <point x="146.00" y="70.00"/>
+            </points>
+          </graphic>
+        </graphics>
+      </edge>
+      <edge source="50" target="30" id="73" net="1">
+        <attribute name="Multiplicity" id="74" net="1">
+          <![CDATA[1]]>
+          <graphics count="0"/>
+        </attribute>
+        <graphics count="1">
+          <graphic id="75" net="1" source="52" target="40" state="1" show="1" pen="0,0,255" brush="0,0,255" edge_designtype="3">
+            <points count="2">
+              <point x="154.00" y="70.00"/>
+              <point x="200.00" y="90.00"/>
+            </points>
+          </graphic>
+        </graphics>
+      </edge>
+      <edge source="30" target="60" id="76" net="1">
+        <attribute name="Multiplicity" id="77" net="1">
+          <![CDATA[1]]>
+          <graphics count="0"/>
+        </attribute>
+        <graphics count="1">
+          <graphic id="78" net="1" source="40" target="62" state="1" show="1" pen="0,0,0" brush="0,0,0" edge_designtype="3"/>
+        </graphics>
+      </edge>
+      <edge source="60" target="10" id="79" net="1">
+        <attribute name="Multiplicity" id="80" net="1">
+          <![CDATA[2]]>
+          <graphics count="0"/>
+        </attribute>
+        <graphics count="1">
+          <graphic id="81" net="1" source="62" target="20" state="1" show="1" pen="0,0,0" brush="0,0,0" edge_designtype="3"/>
+        </graphics>
+      </edge>
+    </edgeclass>
+  </edgeclasses>
+  <metadataclasses count="2">
+    <metadataclass count="1" name="General">
+      <metadata id="90" net="1">
+        <attribute name="Name" id="91" net="1">
+          <![CDATA[mutex]]>
+          <graphics count="0"/>
+        </attribute>
+        <attribute name="Description" id="92" net="1">
+          <![CDATA[Two processes, one critical section.]]>
+          <graphics count="0"/>
+        </attribute>
+        <attribute name="Authors" id="93" net="1">
+          <![CDATA[]]>
+          <graphics count="0"/>
+        </attribute>
+        <graphics count="0"/>
+      </metadata>
+    </metadataclass>
+    <metadataclass count="1" name="Comment">
+      <metadata id="95" net="1">
+        <attribute name="Comment" id="96" net="1">
+          <![CDATA[mutual exclusion]]>
+          <graphics count="0"/>
+        </attribute>
+        <graphics count="1">
+          <graphic x="150.00" y="20.00" id="97" net="1" show="1" w="120.00" h="20.00" state="1" pen="0,128,0" brush="255,255,255"/>
+        </graphics>
+      </metadata>
+    </metadataclass>
+  </metadataclasses>
+</Snoopy>

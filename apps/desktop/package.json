@@ -1,0 +1,111 @@
+{
+  "name": "@pns/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE.md",
+  "description": "Donwinne is a Petri nets studio",
+  "author": "Navin Hariharan",
+  "main": "build/main.cjs",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node scripts/build.mjs && electron .",
+    "dist": "node scripts/build.mjs --copy-web && electron-builder --publish never",
+    "dist:win": "node scripts/build.mjs --copy-web && electron-builder --win --publish never",
+    "dist:mac": "node scripts/build.mjs --copy-web && electron-builder --mac --publish never",
+    "dist:linux": "node scripts/build.mjs --copy-web && electron-builder --linux --publish never"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "electron": "^44.8.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3"
+  },
+  "build": {
+    "appId": "org.donwinne.app",
+    "productName": "Donwinne",
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "files": [
+      "build/**",
+      "package.json",
+      "!build/**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "web",
+        "to": "web",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "npmRebuild": false,
+    "fileAssociations": [
+      {
+        "ext": "pns.json",
+        "name": "Donwinne model",
+        "description": "Donwinne model",
+        "role": "Editor",
+        "mimeType": "application/x-donwinne+json"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Development",
+      "maintainer": "Navin Hariharan",
+      "executableName": "donwinne",
+      "syncDesktopName": true
+    },
+    "extraMetadata": {
+      "name": "donwinne"
+    },
+    "artifactName": "donwinne-${version}-${os}-${arch}.${ext}",
+    "publish": null,
+    "icon": "resources/icon.png"
+  },
+  "desktopName": "donwinne.desktop"
+}

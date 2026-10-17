@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+apps/desktop/release
+apps/desktop/build
+apps/desktop/web
+docs
+*.log
+.git
