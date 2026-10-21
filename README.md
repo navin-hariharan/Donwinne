@@ -450,7 +450,6 @@ to build the models, and a way to verify them with existing model checking techn
 | 5. Transformed APNs | T-APNs (Defs 20 and 21), complementary places instead of inhibitors | T-APN net class |
 | 6. Relating APNs with T-APNs | The construction φ and behavioural equivalence (Theorem 1) | Analyse > Ambient (Konios) > Construct T-APN, Check equivalence… (with a replayable counterexample) |
 | 7. Verification of Ambient Systems Using T-APNs | Model checking, qualitative properties, paths, fault tolerance | Analyse > Model checking (CTL)…: formulas, 22 property templates, paths, fault tolerance |
-| 8. Conclusion and Future Work | | |
 
 #### Reproducing the thesis's results
 
