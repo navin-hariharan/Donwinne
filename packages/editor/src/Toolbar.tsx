@@ -134,12 +134,17 @@ export function Icon({ name, size = 18 }: { name: string; size?: number }) {
     case "close":
       return <svg {...s}><path d="M6 6l12 12M18 6L6 18" /></svg>;
     case "logo":
+      // The Donwinne mark: a "D" drawn as a transition, two arcs and a place.
       return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
-          <circle cx="6" cy="12" r="4" />
-          <rect x="15" y="6" width="4" height="12" rx="0.8" fill="currentColor" />
-          <path d="M10 12h4" />
-          <circle cx="6" cy="12" r="1.2" fill="currentColor" stroke="none" />
+        <svg width={size} height={size} viewBox="64 64 384 384" fill="currentColor">
+          <rect x="86" y="100" width="76" height="312" rx="16" />
+          <g fill="none" stroke="currentColor" strokeWidth={40} strokeLinecap="round">
+            <path d="M162 136C199.6 136 231.7 141.1 258.3 149.8" />
+            <path d="M303.1 341.2C279.9 356.4 248.8 367.8 210 373" />
+          </g>
+          <path d="M303.1 170.8L235.9 164L269.8 112.1Z" />
+          <path d="M166 376L226 345L226 407Z" />
+          <circle cx="355.5" cy="256" r="74" fill="none" stroke="currentColor" strokeWidth={40} />
         </svg>
       );
   }

@@ -560,7 +560,7 @@ function FaultTreePanel() {
         </button>
         <button
           className="small"
-          title="Build a stochastic Petri net with the same behaviour, opened as a new model"
+          title="Replace the fault tree with a stochastic Petri net that has the same behaviour (Undo brings the fault tree back)"
           onClick={() => {
             try {
               const pn = faultTreeToPetriNet(net);

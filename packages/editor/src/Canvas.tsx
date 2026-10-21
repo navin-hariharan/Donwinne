@@ -933,7 +933,8 @@ function ConnectHandles({ shape, k, coarse }: { shape: NonNullable<ReturnType<ty
     <g>
       {spots.map((s, i) => (
         <g key={i} data-handle={n.id} className="connect-handle">
-          <circle cx={s.x} cy={s.y} r={(coarse ? 22 * k : 9 * Math.max(0.7, Math.min(1.4, k)))} style={{ fill: "transparent" }} />
+          {/* The hit area reaches back to the node's edge, so the pointer never crosses a gap on its way out and the handles stay up. */}
+          <circle cx={s.x} cy={s.y} r={coarse ? 22 * k : Math.max(9 * Math.max(0.7, Math.min(1.4, k)), gap + 1)} style={{ fill: "transparent" }} />
           <circle cx={s.x} cy={s.y} r={5.5 * grow * Math.max(0.7, Math.min(1.4, k))} className="connect-dot" />
           <path
             d={`M${s.x - 2.5 * grow * k},${s.y} H${s.x + 2.5 * grow * k} M${s.x},${s.y - 2.5 * grow * k} V${s.y + 2.5 * grow * k}`}

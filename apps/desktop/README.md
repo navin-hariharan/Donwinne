@@ -50,6 +50,6 @@ Where to build each OS's installers:
 - **Windows** (NSIS): best built on Windows. You can build from Linux or macOS with `wine`
   installed. Use `CSC_LINK`/`CSC_KEY_PASSWORD` for code signing.
 
-No app icon is set yet, so electron-builder uses the default Electron icon. Add
-`resources/icon.png` (1024×1024), and optionally `icon.icns` and `icon.ico`, to brand the installers.
+The app icon is `resources/icon.png` (1024×1024, the Donwinne logo); electron-builder derives the
+Windows and macOS icons from it. Add `icon.icns` or `icon.ico` beside it to use hand-tuned versions.
 The `linux.maintainer` email and `homepage` in `package.json` are placeholders.

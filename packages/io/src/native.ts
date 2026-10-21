@@ -136,7 +136,8 @@ export function checkStructure(net: Net): void {
       if (!placeIds.has(end) && !transIds.has(end))
         throw new Error(`Arc "${a.id}" refers to "${end}", which is not a place or transition in this net.`);
     const ok = (placeIds.has(a.source) && transIds.has(a.target)) || (transIds.has(a.source) && placeIds.has(a.target));
-    if (!ok) throw new Error(`Arc "${a.id}" must connect a place and a transition.`);
+    // Freestyle nets are drawings, so any two nodes may be connected.
+    if (!ok && net.netClass !== "freestyle") throw new Error(`Arc "${a.id}" must connect a place and a transition.`);
   }
 
   if (net.faultTree) {

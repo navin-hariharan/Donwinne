@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { compile, emptyNet, initialMarking } from "@pns/core";
 import { pageView } from "../src/geometry";
-import { addArc, addPlace, addTransition, alignSelection, groupIntoSubnet, loadNet, redo, undo, useStore, ungroupSubnet } from "../src/store";
+import { addArc, addFTEdge, addFTNode, addPlace, addTransition, alignSelection, copySelection, groupIntoSubnet, loadNet, paste, redo, undo, useStore, ungroupSubnet } from "../src/store";
 
 function chain() {
   loadNet(emptyNet("pt"), null);
@@ -16,6 +16,24 @@ function chain() {
 }
 
 describe("editing", () => {
+  it("keeps fault tree connections when copying and pasting", () => {
+    loadNet(emptyNet("faultTree"), null);
+    const gate = addFTNode("and", 0, 0);
+    const a = addFTNode("basic", -50, 100);
+    const b = addFTNode("basic", 50, 100);
+    expect(addFTEdge(a, gate)).toBeNull();
+    expect(addFTEdge(b, gate)).toBeNull();
+    useStore.setState({ selection: [gate, a] });
+    expect(copySelection()).toBe(true);
+    paste();
+    const ft = useStore.getState().net.faultTree!;
+    expect(ft.nodes).toHaveLength(5);
+    expect(ft.edges).toHaveLength(3);
+    const pasted = new Set(useStore.getState().selection);
+    const copy = ft.edges.at(-1)!;
+    expect(pasted.has(copy.source) && pasted.has(copy.target)).toBe(true);
+  });
+
   it("rejects place-to-place arcs and duplicate arcs", () => {
     const { p0, p1, t0 } = chain();
     expect(addArc(p0, p1)).toMatch(/place and a transition/);

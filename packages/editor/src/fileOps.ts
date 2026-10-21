@@ -381,7 +381,7 @@ export function netTikz(full: Net): string {
     lines.push(`  \\node[transition, label=above:{${esc(t.name)}}] (${id(t.id)}) at (${(t.x * k).toFixed(2)}, ${(t.y * k).toFixed(2)}) {};`);
   for (const n of net.faultTree?.nodes ?? [])
     lines.push(`  \\node[draw, ${n.type === "basic" ? "circle" : "rectangle"}, font=\\small] (${id(n.id)}) at (${(n.x * k).toFixed(2)}, ${(n.y * k).toFixed(2)}) {${esc(n.name)}${["and", "or", "xor", "kofn", "not", "pand", "inhibit"].includes(n.type) ? ` (${n.type.toUpperCase()})` : ""}};`);
-  const head: Record<string, string> = { normal: "-{Latex}", read: "-{Circle}", inhibitor: "-{Circle[open]}", reset: "-{Latex[]Latex}", equal: "-{Diamond[open]}" };
+  const head: Record<string, string> = { normal: "-{Latex}", read: "-{Circle}", inhibitor: "-{Circle[open]}", reset: "-{Latex[]Latex}", equal: "-{Diamond[open]}", modifier: "dashed" };
   for (const a of net.arcs) {
     const via = (a.points ?? []).map((p) => ` -- (${(p.x * k).toFixed(2)}, ${(p.y * k).toFixed(2)})`).join("");
     const lbl = a.inscription && a.inscription !== "1" ? ` node[midway, auto, font=\\small] {${esc(a.inscription)}}` : "";

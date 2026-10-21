@@ -195,7 +195,7 @@ function NewNetDialog() {
 
 const SHORTCUTS: [string, string][] = [
   ["V · P · T · A · N", "Select, place, transition, arc and note tools"],
-  ["1 – 5", "Arc type: normal, read, inhibitor, reset, equal"],
+  ["1 – 6", "Arc type: normal, read, inhibitor, reset, equal, modifier"],
   ["Double-click canvas", "Add a place (an event in fault trees)"],
   ["Double-click node", "Rename it; inside a place, edit its tokens"],
   ["Double-click arc", "Edit its weight or inscription"],
@@ -213,7 +213,7 @@ const SHORTCUTS: [string, string][] = [
   ["Arrows (+Shift)", "Nudge the selection by 1 (10)"],
   ["Space+drag · right-drag", "Pan"],
   [`${MOD}wheel · pinch`, "Zoom"],
-  ["F · M · G", "Zoom to fit, overview map, snap to grid"],
+  ["F · M · G · B", "Zoom to fit, overview map, snap to grid, bottom panel"],
   ["S", "Start the token game"],
   ["← → · R · Space · Esc", "In the token game: back, forward, random, run, stop"],
   ["X", "Step token game: fire a maximal step"],

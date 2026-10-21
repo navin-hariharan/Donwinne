@@ -810,7 +810,7 @@ const CS_TYPES: {
   {
     type: "string",
     label: "string",
-    placeholder: '"in", "out"',
+    placeholder: "in, out",
     defaults: { values: ["s1", "s2"] },
   },
   {
@@ -1032,6 +1032,8 @@ function DeclarationsEditor({
                                     ? {
                                         name: x.name,
                                         type: x.type,
+                                        // A T-APN's complementary set stays tied to its identity set.
+                                        ...(x.complementOf ? { complementOf: x.complementOf } : {}),
                                         ...parseDefinition(x.type, t),
                                       }
                                     : x,

@@ -32,6 +32,11 @@ on the PhD thesis of Alexandros Konios:
 > A. Konios. *Modelling and Verification of Ambient Systems using Petri Nets.* PhD thesis, School of Computing
 > Science, Newcastle University, June 2015. Supervised by Marta Pietkiewicz-Koutny.
 
+A copy of the thesis is included for reference at
+[docs/thesis/Konios-2015-Modelling-and-Verification-of-Ambient-Systems-using-Petri-Nets.pdf](docs/thesis/Konios-2015-Modelling-and-Verification-of-Ambient-Systems-using-Petri-Nets.pdf);
+it remains the work and copyright of its author. [docs/ambient-petri-nets.md](docs/ambient-petri-nets.md) maps each of its
+definitions, figures and results to Donwinne.
+
 The example "Konios Fig. 3.1: colour-sensitive inhibitor arc" reproduces Figure 3.1 of the thesis.
 
 ## Open-source libraries

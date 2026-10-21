@@ -778,7 +778,7 @@ function FaultsTab({ net, limit, deadlocks }: { net: Net; limit: number; deadloc
           </table>
           <p className="muted small">
             Fault-free: {report.faultFree.states.toLocaleString()} states{report.faultFree.complete ? "" : " (cut off)"}, {report.faultFree.deadStates} dead. With the fault:{" "}
-            {report.faulty.states.toLocaleString()} states{report.faulty.complete ? "" : " (cut off)"}, {report.faulty.deadStates} dead, {report.newDeadMarkings.length} new dead markings.
+            {report.faulty.states.toLocaleString()} states{report.faulty.complete ? "" : " (cut off)"}, {report.faulty.deadStates} dead, {report.newDeadMarkings.length} new dead marking{report.newDeadMarkings.length === 1 ? "" : "s"}.
           </p>
           {report.wrongAdviceWithFault.trace && (
             <details>

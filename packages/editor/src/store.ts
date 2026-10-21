@@ -4,6 +4,7 @@ import {
   ArcKind,
   Binding,
   CompiledNet,
+  FTEdge,
   FTNode,
   FTNodeType,
   Marking,
@@ -65,6 +66,7 @@ export interface Clipboard {
   arcs: Arc[];
   notes: Note[];
   ftNodes: FTNode[];
+  ftEdges: FTEdge[];
 }
 
 export type InlineField = "name" | "marking" | "inscription" | "note" | "rate";
@@ -785,8 +787,10 @@ export function copySelection() {
   const ftNodes = (s.net.faultTree?.nodes ?? []).filter((n) => ids.has(n.id));
   const nodeIds = new Set([...places, ...transitions].map((n) => n.id));
   const arcs = s.net.arcs.filter((a) => nodeIds.has(a.source) && nodeIds.has(a.target));
+  const ftIds = new Set(ftNodes.map((n) => n.id));
+  const ftEdges = (s.net.faultTree?.edges ?? []).filter((e) => ftIds.has(e.source) && ftIds.has(e.target));
   if (!places.length && !transitions.length && !notes.length && !ftNodes.length) return false;
-  clipboard = { places, transitions, arcs, notes, ftNodes };
+  clipboard = { places, transitions, arcs, notes, ftNodes, ftEdges };
   return true;
 }
 
@@ -823,16 +827,28 @@ export function paste(offset = 40) {
     points: a.points?.map((p) => ({ x: p.x + offset, y: p.y + offset })),
   }));
   const notes = clipboard.notes.map((n) => ({ ...n, id: newId("n"), x: n.x + offset, y: n.y + offset, parent: page }));
-  const ftNodes = clipboard.ftNodes.map((n) => ({ ...n, id: newId("f"), x: n.x + offset, y: n.y + offset, parent: page }));
+  const ftNodes = clipboard.ftNodes.map((n) => {
+    const id = newId("f");
+    map.set(n.id, id);
+    return { ...n, id, x: n.x + offset, y: n.y + offset, parent: page };
+  });
+  const ftEdges = clipboard.ftEdges.map((e) => ({
+    ...e,
+    id: newId("e"),
+    source: map.get(e.source)!,
+    target: map.get(e.target)!,
+    points: e.points?.map((p) => ({ x: p.x + offset, y: p.y + offset })),
+  }));
   edit((n) => ({
     ...n,
     places: [...n.places, ...places],
     transitions: [...n.transitions, ...transitions],
     arcs: [...n.arcs, ...arcs],
     notes: notes.length ? [...(n.notes ?? []), ...notes] : n.notes,
-    faultTree: ftNodes.length && n.faultTree ? { ...n.faultTree, nodes: [...n.faultTree.nodes, ...ftNodes] } : n.faultTree,
+    faultTree:
+      ftNodes.length && n.faultTree ? { ...n.faultTree, nodes: [...n.faultTree.nodes, ...ftNodes], edges: [...n.faultTree.edges, ...ftEdges] } : n.faultTree,
   }));
-  clipboard = { places, transitions, arcs, notes, ftNodes };
+  clipboard = { places, transitions, arcs, notes, ftNodes, ftEdges };
   set({ selection: [...places, ...transitions, ...notes, ...ftNodes].map((n) => n.id) });
 }
 

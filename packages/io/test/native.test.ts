@@ -81,6 +81,13 @@ describe("native format", () => {
     expect(parseNet(JSON.stringify({ format: "pns/1", netClass: "faultTree" })).faultTree).toEqual({ nodes: [], edges: [] });
   });
 
+  it("reopens freestyle drawings with arcs between any two nodes", () => {
+    const net = parseNet(
+      JSON.stringify({ format: "pns/1", netClass: "freestyle", places: [{ id: "p" }, { id: "q" }], arcs: [{ id: "a", source: "p", target: "q" }] }),
+    );
+    expect(net.arcs).toHaveLength(1);
+  });
+
   it("drops unknown properties", () => {
     const net = parseNet(JSON.stringify({ ...ptNet(), extra: 1 }));
     expect(net).not.toHaveProperty("extra");

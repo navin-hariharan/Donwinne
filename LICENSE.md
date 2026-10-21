@@ -5,7 +5,7 @@ Copyright (c) 2026 Navin Hariharan. All rights reserved.
 Donwinne ("the Software") is the work of **Navin Hariharan**.
 
 - Website: <https://navin-hariharan.com>
-- GitHub: <https://github.com/navin_hariharan>
+- GitHub: <https://github.com/navin-hariharan>
 
 ## 1. Educational use: free
 
@@ -32,12 +32,12 @@ of the following:
 
 1. the name **Navin Hariharan**;
 2. the website **<https://navin-hariharan.com>**;
-3. the GitHub profile **<https://github.com/navin_hariharan>**.
+3. the GitHub profile **<https://github.com/navin-hariharan>**.
 
 The credit must appear wherever the Software or work derived from it is used, shown or published, for example in
 documentation, an "About" screen, a README, a report, a thesis, a paper or a presentation. A suggested form is:
 
-> Donwinne by Navin Hariharan (https://navin-hariharan.com, https://github.com/navin_hariharan).
+> Donwinne by Navin Hariharan (https://navin-hariharan.com, https://github.com/navin-hariharan).
 
 This copyright and licence notice must be kept in all copies and in every substantial part of the Software.
 
