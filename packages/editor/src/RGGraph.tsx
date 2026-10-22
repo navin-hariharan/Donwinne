@@ -17,7 +17,7 @@ export interface RGEdge {
   label: string;
 }
 
-interface Laid {
+export interface Laid {
   nodes: { x: number; y: number; w: number; h: number }[];
   edges: { points: { x: number; y: number }[]; label?: { x: number; y: number } }[];
   width: number;
@@ -28,7 +28,55 @@ interface Laid {
 export const RG_GRAPH_LIMIT = 150;
 
 const CHAR_W = 6.6;
-const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+
+/** Lay the graph out top to bottom with ELK. Edges must only join the given nodes. */
+export async function layoutRG(nodes: RGNode[], edges: RGEdge[]): Promise<Laid> {
+  const { default: ELK } = await import("elkjs/lib/elk.bundled.js");
+  const elk = new ELK();
+  const res = await elk.layout({
+    id: "rg",
+    layoutOptions: {
+      "elk.algorithm": "layered",
+      "elk.direction": "DOWN",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "46",
+      "elk.spacing.nodeNode": "28",
+      "elk.spacing.edgeLabel": "4",
+      "elk.edgeLabels.inline": "true",
+      "elk.edgeRouting": "POLYLINE",
+      // States are numbered in the order they were found, so following that order when breaking
+      // cycles keeps the initial marking at the top and most arrows pointing down.
+      "elk.layered.cycleBreaking.strategy": "MODEL_ORDER",
+    },
+    children: nodes.map((n, i) => ({
+      id: `s${i}`,
+      width: Math.max(44, Math.min(220, clip(n.text, 32).length * CHAR_W) + 16),
+      height: 38,
+      layoutOptions: i === 0 ? { "elk.layered.layering.layerConstraint": "FIRST" } : undefined,
+    })),
+    edges: edges.map((e, i) => ({
+      id: `e${i}`,
+      sources: [`s${e.from}`],
+      targets: [`s${e.to}`],
+      labels: [{ text: clip(e.label, 18), width: clip(e.label, 18).length * CHAR_W, height: 12 }],
+    })),
+  });
+  type Sec = { startPoint: { x: number; y: number }; endPoint: { x: number; y: number }; bendPoints?: { x: number; y: number }[] };
+  const out = ((res.edges ?? []) as { sections?: Sec[]; labels?: { x?: number; y?: number; width?: number; height?: number }[] }[]).map((e) => {
+    const sec = e.sections?.[0];
+    const lab = e.labels?.[0];
+    return {
+      points: sec ? [sec.startPoint, ...(sec.bendPoints ?? []), sec.endPoint] : [],
+      label: lab ? { x: (lab.x ?? 0) + (lab.width ?? 0) / 2, y: (lab.y ?? 0) + (lab.height ?? 0) / 2 } : undefined,
+    };
+  });
+  return {
+    nodes: (res.children ?? []).map((c) => ({ x: c.x ?? 0, y: c.y ?? 0, w: c.width ?? 0, h: c.height ?? 0 })),
+    edges: out,
+    width: (res.width ?? 0) + 24,
+    height: (res.height ?? 0) + 24,
+  };
+}
 
 export function RGGraph({ nodes, edges, onPick }: { nodes: RGNode[]; edges: RGEdge[]; onPick: (i: number) => void }) {
   const [laid, setLaid] = useState<Laid | null>(null);
@@ -39,58 +87,9 @@ export function RGGraph({ nodes, edges, onPick }: { nodes: RGNode[]; edges: RGEd
   useEffect(() => {
     let live = true;
     setLaid(null);
-    (async () => {
-      try {
-        const { default: ELK } = await import("elkjs/lib/elk.bundled.js");
-        const elk = new ELK();
-        const res = await elk.layout({
-          id: "rg",
-          layoutOptions: {
-            "elk.algorithm": "layered",
-            "elk.direction": "DOWN",
-            "elk.layered.spacing.nodeNodeBetweenLayers": "46",
-            "elk.spacing.nodeNode": "28",
-            "elk.spacing.edgeLabel": "4",
-            "elk.edgeLabels.inline": "true",
-            "elk.edgeRouting": "POLYLINE",
-            // States are numbered in the order they were found, so following that order when breaking
-            // cycles keeps the initial marking at the top and most arrows pointing down.
-            "elk.layered.cycleBreaking.strategy": "MODEL_ORDER",
-          },
-          children: shown.map((n, i) => ({
-            id: `s${i}`,
-            width: Math.max(44, Math.min(220, clip(n.text, 32).length * CHAR_W) + 16),
-            height: 38,
-            layoutOptions: i === 0 ? { "elk.layered.layering.layerConstraint": "FIRST" } : undefined,
-          })),
-          edges: shownEdges.map((e, i) => ({
-            id: `e${i}`,
-            sources: [`s${e.from}`],
-            targets: [`s${e.to}`],
-            labels: [{ text: clip(e.label, 18), width: clip(e.label, 18).length * CHAR_W, height: 12 }],
-          })),
-        });
-        if (!live) return;
-        const kids = res.children ?? [];
-        type Sec = { startPoint: { x: number; y: number }; endPoint: { x: number; y: number }; bendPoints?: { x: number; y: number }[] };
-        const out = ((res.edges ?? []) as { sections?: Sec[]; labels?: { x?: number; y?: number; width?: number; height?: number }[] }[]).map((e) => {
-          const sec = e.sections?.[0];
-          const lab = e.labels?.[0];
-          return {
-            points: sec ? [sec.startPoint, ...(sec.bendPoints ?? []), sec.endPoint] : [],
-            label: lab ? { x: (lab.x ?? 0) + (lab.width ?? 0) / 2, y: (lab.y ?? 0) + (lab.height ?? 0) / 2 } : undefined,
-          };
-        });
-        setLaid({
-          nodes: kids.map((c) => ({ x: c.x ?? 0, y: c.y ?? 0, w: c.width ?? 0, h: c.height ?? 0 })),
-          edges: out,
-          width: (res.width ?? 0) + 24,
-          height: (res.height ?? 0) + 24,
-        });
-      } catch (e) {
-        if (live) setError((e as Error).message);
-      }
-    })();
+    layoutRG(shown, shownEdges)
+      .then((l) => live && setLaid(l))
+      .catch((e) => live && setError((e as Error).message));
     return () => {
       live = false;
     };

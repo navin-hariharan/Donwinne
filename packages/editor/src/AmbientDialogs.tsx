@@ -49,6 +49,10 @@ import {
   runEquivalence,
   useAmbient,
 } from "./ambient";
+import { exportData, svgToPng } from "./fileOps";
+import { RGNode, layoutRG } from "./RGGraph";
+import { RG_PICTURE_LIMIT, rgCsv, rgDot, rgSvg } from "./rgExport";
+import { WATERMARK_HEIGHT } from "./watermark";
 
 export type ModalType = React.ComponentType<{ title: string; onClose: () => void; wide?: boolean; children: React.ReactNode }>;
 
@@ -204,6 +208,7 @@ export function CrgDialog({ Modal, close }: { Modal: ModalType; close: () => voi
             States list their structured places (p, c). {maximalOnly ? "Edges carry maximal steps only, so this is a smaller graph than CRG(N). " : ""}Choose a state or an edge to replay the steps to it in the
             token game and see the marking on the canvas.
           </p>
+          <CrgExport view={result.view} name={result.net.name} />
           <div className="rg-head wrap">
             <input className="grow" type="search" placeholder="Find states, e.g. M12 or (p1,b)" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Find states" />
             {filter && <span className="muted small">{plural(states.length, "match", "matches")}</span>}
@@ -246,6 +251,47 @@ export function CrgDialog({ Modal, close }: { Modal: ModalType; close: () => voi
         </>
       )}
     </Modal>
+  );
+}
+
+/** Save the CRG as a picture, a GraphViz file or a table, like the reachability graph of other nets. */
+function CrgExport({ view, name }: { view: CrgView; name: string }) {
+  const nodes: RGNode[] = view.states.map((st) => ({ name: st.label, text: st.pairs.join(" "), dead: st.dead }));
+  const edges = view.edges.map((e) => ({ from: e.from, to: e.to, label: e.label }));
+  const big = nodes.length > RG_PICTURE_LIMIT;
+  const base = `${name || "apn"}-crg`;
+  const save = async (kind: "svg" | "png" | "dot" | "csv") => {
+    try {
+      if (kind === "dot") return await exportData(`${base}.dot`, rgDot(nodes, edges, name ? `${name} CRG` : "CRG"), "text/vnd.graphviz", [{ name: "GraphViz DOT", extensions: ["dot", "gv"] }]);
+      if (kind === "csv") {
+        const states = view.states.map((st) => ({ name: st.label, tokens: [st.pairs.join(" ")], dead: st.dead, next: view.edges.filter((e) => e.from === st.id).map((e) => `${e.label}->M${e.to}`) }));
+        return await exportData(`${base}.csv`, rgCsv(["structured places"], states), "text/csv", [{ name: "CSV table", extensions: ["csv"] }]);
+      }
+      const laid = await layoutRG(nodes, edges);
+      const svg = rgSvg(nodes, edges, laid);
+      if (kind === "svg") return await exportData(`${base}.svg`, svg, "image/svg+xml", [{ name: "SVG image", extensions: ["svg"] }]);
+      await exportData(`${base}.png`, await svgToPng(svg, laid.width, laid.height + WATERMARK_HEIGHT), "image/png", [{ name: "PNG image", extensions: ["png"] }]);
+    } catch (e) {
+      toast(`Could not export the graph: ${(e as Error).message}`, "error");
+    }
+  };
+  const tip = big ? `Too big to draw (over ${RG_PICTURE_LIMIT} states); use DOT` : undefined;
+  return (
+    <div className="rg-export" role="group" aria-label="Export the concurrent reachability graph">
+      <span className="muted small">Export:</span>
+      <button className="small" onClick={() => save("svg")} disabled={big} title={tip ?? "The graph drawn as an SVG image"} data-testid="crg-export-svg">
+        SVG
+      </button>
+      <button className="small" onClick={() => save("png")} disabled={big} title={tip ?? "The graph drawn as a PNG image"}>
+        PNG
+      </button>
+      <button className="small" onClick={() => save("dot")} title="GraphViz DOT, for dot -Tpdf and other graph tools" data-testid="crg-export-dot">
+        DOT
+      </button>
+      <button className="small" onClick={() => save("csv")} title="Every state with its structured places and steps, as a spreadsheet">
+        CSV
+      </button>
+    </div>
   );
 }
 

@@ -1619,6 +1619,13 @@ button.swatch.on {
 .rg-arrowhead {
   fill: var(--muted);
 }
+.rg-export {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
 .rg-view {
   display: inline-flex;
   margin-left: auto;
@@ -1930,6 +1937,15 @@ button.swatch.on {
   }
   .canvas {
     background: #fff;
+  }
+  /* Printing the window (the desktop app, or the browser's own print) carries the watermark too. */
+  .canvas-wrap::after {
+    content: "Exported from Donwinne";
+    position: fixed;
+    right: 6mm;
+    bottom: 4mm;
+    font: 9px sans-serif;
+    color: #8a94a6;
   }
   .canvas rect[fill="url(#grid)"] {
     display: none;

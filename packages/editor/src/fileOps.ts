@@ -10,6 +10,7 @@ import { EXPORT_PALETTE, NetDrawing } from "./NetDrawing";
 import { netBounds, pageView } from "./geometry";
 import { RecentFile, compiled, currentMarking, forgetRecent, loadNet, markSaved, newNet, recentText, rememberFile, toast, useStore } from "./store";
 import { FileFilter, desktop } from "./platform";
+import { WATERMARK, WATERMARK_HEIGHT, markPng, markText, svgWatermark } from "./watermark";
 
 const NET_FILTER: FileFilter[] = [{ name: "Donwinne model", extensions: ["pns.json", "json"] }];
 const PNML_FILTER: FileFilter[] = [{ name: "PNML", extensions: ["pnml", "xml"] }];
@@ -30,8 +31,9 @@ function confirmDiscard(): boolean {
 type FsHandle = { name: string; getFile(): Promise<File>; createWritable(): Promise<{ write(d: unknown): Promise<void>; close(): Promise<void> }> };
 const fsApi = typeof window !== "undefined" && "showSaveFilePicker" in window;
 
-export function downloadText(name: string, data: string, type: string) {
-  download(name, data, type);
+/** Save text from a panel (reports, plot data, plot pictures); `format` says how to watermark it. */
+export function downloadText(name: string, data: string, type: string, format = "txt") {
+  download(name, markText(format, data), type);
 }
 
 function download(name: string, data: BlobPart, type: string) {
@@ -178,7 +180,7 @@ export async function cmdSave(saveAs = false) {
   rememberFile(suggested, content);
 }
 
-async function exportData(name: string, data: string | Uint8Array, type: string, filters: FileFilter[]) {
+export async function exportData(name: string, data: string | Uint8Array, type: string, filters: FileFilter[]) {
   const d = desktop();
   if (d) {
     if (await d.exportFile(name, data, filters)) toast(`Exported ${name}`);
@@ -190,7 +192,7 @@ async function exportData(name: string, data: string | Uint8Array, type: string,
 export async function cmdExportPnml() {
   const s = useStore.getState();
   try {
-    await exportData(`${baseName(s.fileName, s.net.name || "net")}.pnml`, exportPnml(s.net), "application/xml", PNML_FILTER);
+    await exportData(`${baseName(s.fileName, s.net.name || "net")}.pnml`, markText("pnml", exportPnml(s.net)), "application/xml", PNML_FILTER);
   } catch (e) {
     toast(`Could not export PNML: ${(e as Error).message}`, "error");
   }
@@ -205,10 +207,12 @@ export function netSvg(full: Net, page: string | null = useStore.getState().page
   const body = renderToStaticMarkup(
     React.createElement(NetDrawing, { net, cn, palette: EXPORT_PALETTE, marking: currentMarking() ?? undefined, ghosts: pv.ghosts }),
   );
+  // The watermark goes in a strip below the drawing, so it never covers part of the net.
+  const h = b.h + WATERMARK_HEIGHT;
   return (
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(b.w)}" height="${Math.ceil(b.h)}" viewBox="${b.x} ${b.y} ${b.w} ${b.h}">` +
-    `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="#ffffff"/>${body}</svg>`
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(b.w)}" height="${Math.ceil(h)}" viewBox="${b.x} ${b.y} ${b.w} ${h}">` +
+    `<rect x="${b.x}" y="${b.y}" width="${b.w}" height="${h}" fill="#ffffff"/>${body}${svgWatermark(b.x, b.y, b.w, b.h)}</svg>`
   );
 }
 
@@ -219,8 +223,17 @@ export async function cmdExportSvg() {
 
 export async function cmdExportPng(scale = 2) {
   const s = useStore.getState();
-  const svg = netSvg(s.net);
-  const b = netBounds(pageView(s.net, s.page).net, 24);
+  const nb = netBounds(pageView(s.net, s.page).net, 24);
+  try {
+    const bytes = await svgToPng(netSvg(s.net), nb.w, nb.h + WATERMARK_HEIGHT, scale);
+    await exportData(`${baseName(s.fileName, s.net.name || "net")}.png`, bytes, "image/png", [{ name: "PNG image", extensions: ["png"] }]);
+  } catch (e) {
+    toast((e as Error).message, "error");
+  }
+}
+
+/** Render a standalone SVG of size w × h to PNG bytes, `scale` pixels per unit, with the watermark metadata. */
+export async function svgToPng(svg: string, w: number, h: number, scale = 2): Promise<Uint8Array> {
   const img = new Image();
   const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
   try {
@@ -230,16 +243,13 @@ export async function cmdExportPng(scale = 2) {
       img.src = url;
     });
     const canvas = document.createElement("canvas");
-    canvas.width = Math.ceil(b.w * scale);
-    canvas.height = Math.ceil(b.h * scale);
+    canvas.width = Math.ceil(w * scale);
+    canvas.height = Math.ceil(h * scale);
     const ctx = canvas.getContext("2d")!;
     ctx.scale(scale, scale);
-    ctx.drawImage(img, 0, 0, b.w, b.h);
+    ctx.drawImage(img, 0, 0, w, h);
     const blob: Blob = await new Promise((res, rej) => canvas.toBlob((x) => (x ? res(x) : rej(new Error("PNG encoding failed"))), "image/png"));
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    await exportData(`${baseName(s.fileName, s.net.name || "net")}.png`, bytes, "image/png", [{ name: "PNG image", extensions: ["png"] }]);
-  } catch (e) {
-    toast((e as Error).message, "error");
+    return markPng(new Uint8Array(await blob.arrayBuffer()));
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -319,8 +329,9 @@ export async function cmdExport(id: string) {
   if (!f) return;
   const s = useStore.getState();
   try {
-    const data = await f.run(s.net);
-    if (data === null) return;
+    const raw = await f.run(s.net);
+    if (raw === null) return;
+    const data = typeof raw === "string" ? markText(f.id, raw) : raw;
     const name = `${baseName(s.fileName, s.net.name || "net")}.${f.ext(s.net)}`;
     await exportData(name, data, f.type, [{ name: f.label, extensions: [f.ext(s.net).split(".").pop()!] }]);
     const w = f.warnings?.(s.net) ?? [];
@@ -399,7 +410,7 @@ export function netTikz(full: Net): string {
   const id = (x: string) => x.replace(/[^A-Za-z0-9]/g, "");
   const k = 1 / 50; // 50 px = 1 cm
   const lines = [
-    "% Generated by Donwinne. Needs \\usetikzlibrary{petri,arrows.meta}",
+    "% Needs \\usetikzlibrary{petri,arrows.meta}",
     "\\begin{tikzpicture}[yscale=-1, every place/.style={minimum size=8mm, thick}, every transition/.style={minimum width=2.5mm, minimum height=8mm, thick, fill=white}]",
   ];
   for (const p of net.places) {
@@ -417,6 +428,7 @@ export function netTikz(full: Net): string {
     lines.push(`  \\draw[${head[a.kind]}, thick] (${id(a.source)})${via} -- (${id(a.target)})${lbl};`);
   }
   for (const e of net.faultTree?.edges ?? []) lines.push(`  \\draw[thick] (${id(e.source)}) |- ++(0,-0.5) -| (${id(e.target)});`);
+  lines.push(`  \\node[anchor=north east, font=\\tiny, text=gray] at (current bounding box.south east) {${WATERMARK}};`);
   lines.push("\\end{tikzpicture}");
   return lines.join("\n") + "\n";
 }

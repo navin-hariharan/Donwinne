@@ -3,9 +3,12 @@ import { ApnPropsDialog, BlocksDialog, ComposeDialog, CrgDialog, EquivalenceDial
 import { CtlDialog } from "./CtlDialog";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Binding, Marking, NET_CLASS_LABELS, NetClass, Point, enabledBindings, fire, initialMarking, markingKey, showBinding, showTokens } from "@pns/core";
-import { cmdOpen, cmdOpenExample, cmdOpenRecent } from "./fileOps";
+import { cmdOpen, cmdOpenExample, cmdOpenRecent, exportData, svgToPng } from "./fileOps";
 import { EXAMPLES } from "./examples";
-import { RGGraph, RGNode, RG_GRAPH_LIMIT } from "./RGGraph";
+import { RGGraph, RGNode, RG_GRAPH_LIMIT, layoutRG } from "./RGGraph";
+import { RG_PICTURE_LIMIT, rgCsv, rgDot, rgSvg } from "./rgExport";
+import { WATERMARK_HEIGHT } from "./watermark";
+import { APP_VERSION } from "./version";
 import { FTIcon, Icon, MOD } from "./Toolbar";
 import { compiled, enterPage, newNet, pagePath, select, startSimulation, toast, useStore } from "./store";
 
@@ -315,7 +318,7 @@ function AboutDialog() {
   return (
     <Modal title="About Donwinne" onClose={close}>
       <p>
-        <b>Donwinne 0.2</b> is a Petri nets studio: an editor, simulator and analyser for Petri nets and fault trees.
+        <b>Donwinne {APP_VERSION}</b> is a Petri nets studio: an editor, simulator and analyser for Petri nets and fault trees.
       </p>
       <p>
         <b>Donwinne by Navin Hariharan</b> (
@@ -611,7 +614,7 @@ function ReachabilityDialog() {
   const shownView = view ?? (rg && rg.states.length <= RG_GRAPH_LIMIT ? "graph" : "table");
   const graph = useMemo(() => {
     if (!rg) return null;
-    const nodes: RGNode[] = rg.states.slice(0, RG_GRAPH_LIMIT).map((M, i) => ({
+    const nodes: RGNode[] = rg.states.map((M, i) => ({
       name: i === 0 ? "M0" : `M${i}`,
       text: placeCols
         .filter((p) => M[p.slot].size > 0)
@@ -621,6 +624,29 @@ function ReachabilityDialog() {
     }));
     return { nodes, edges: rg.edges.map((e) => ({ from: e.from, to: e.to, label: e.label })) };
   }, [rg]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const exportRG = async (kind: "svg" | "png" | "dot" | "csv") => {
+    if (!rg || !graph) return;
+    const base = `${net.name || "net"}-reachability`;
+    try {
+      if (kind === "dot") return await exportData(`${base}.dot`, rgDot(graph.nodes, graph.edges, net.name), "text/vnd.graphviz", [{ name: "GraphViz DOT", extensions: ["dot", "gv"] }]);
+      if (kind === "csv") {
+        const states = rg.states.map((M, i) => ({
+          name: graph.nodes[i].name,
+          tokens: placeCols.map((p) => showTokens(cn, M[p.slot]) || "0"),
+          dead: rg.dead.includes(i),
+          next: rg.edges.filter((e) => e.from === i).map((e) => `${e.label}->M${e.to}`),
+        }));
+        return await exportData(`${base}.csv`, rgCsv(placeCols.map((p) => p.name), states), "text/csv", [{ name: "CSV table", extensions: ["csv"] }]);
+      }
+      const laid = await layoutRG(graph.nodes, graph.edges);
+      const svg = rgSvg(graph.nodes, graph.edges, laid);
+      if (kind === "svg") return await exportData(`${base}.svg`, svg, "image/svg+xml", [{ name: "SVG image", extensions: ["svg"] }]);
+      await exportData(`${base}.png`, await svgToPng(svg, laid.width, laid.height + WATERMARK_HEIGHT), "image/png", [{ name: "PNG image", extensions: ["png"] }]);
+    } catch (e) {
+      toast(`Could not export the graph: ${(e as Error).message}`, "error");
+    }
+  };
   return (
     <Modal title="Reachability graph" onClose={close} wide>
       <div className="rg-head">
@@ -669,6 +695,23 @@ function ReachabilityDialog() {
             </div>
           </div>
           {shownView === "graph" && graph && <RGGraph nodes={graph.nodes} edges={graph.edges} onPick={showState} />}
+          {graph && (
+            <div className="rg-export" role="group" aria-label="Export the reachability graph">
+              <span className="muted small">Export:</span>
+              <button className="small" onClick={() => exportRG("svg")} disabled={graph.nodes.length > RG_PICTURE_LIMIT} title={graph.nodes.length > RG_PICTURE_LIMIT ? `Too big to draw (over ${RG_PICTURE_LIMIT} states); use DOT` : "The drawing as an SVG image"} data-testid="rg-export-svg">
+                SVG
+              </button>
+              <button className="small" onClick={() => exportRG("png")} disabled={graph.nodes.length > RG_PICTURE_LIMIT} title={graph.nodes.length > RG_PICTURE_LIMIT ? `Too big to draw (over ${RG_PICTURE_LIMIT} states); use DOT` : "The drawing as a PNG image"} data-testid="rg-export-png">
+                PNG
+              </button>
+              <button className="small" onClick={() => exportRG("dot")} title="GraphViz DOT, for dot -Tpdf and other graph tools" data-testid="rg-export-dot">
+                DOT
+              </button>
+              <button className="small" onClick={() => exportRG("csv")} title="Every state with its marking and successors, as a spreadsheet" data-testid="rg-export-csv">
+                CSV
+              </button>
+            </div>
+          )}
           {shownView === "table" && <div className="rg-table-wrap">
             <table className="rg-table">
               <thead>

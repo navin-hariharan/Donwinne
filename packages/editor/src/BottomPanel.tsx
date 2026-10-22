@@ -6,6 +6,7 @@ import { faultTreeToPetriNet, importanceMeasures, layoutFaultTree, reliabilityCu
 import { advanceTime, compiled, enterPage, fireTransition, fmtTime, loadNet, problemsOf, select, simGoto, timedEnabled, toast, useStore, edit } from "./store";
 import { LinePlot, PlotSeries, SERIES_COLORS, fmt } from "./Plot";
 import { downloadText } from "./fileOps";
+import { WATERMARK_HEIGHT, markSvgElement } from "./watermark";
 import { autoLayout } from "./layout";
 import { Splitter } from "./Overlays";
 import { ElementsPanel, revealElement } from "./Elements";
@@ -323,7 +324,7 @@ function PlotPanel() {
 
   const exportCsv = () => {
     if (!trace) return;
-    downloadText(`${net.name || "simulation"}.csv`, traceToCsv(trace, {}), "text/csv");
+    downloadText(`${net.name || "simulation"}.csv`, traceToCsv(trace, {}), "text/csv", "csv");
   };
 
   return (
@@ -489,7 +490,11 @@ function exportPlotImage(name: string) {
   bg.setAttribute("height", "100%");
   bg.setAttribute("fill", "#ffffff");
   clone.insertBefore(bg, clone.firstChild);
-  downloadText(`${name}.svg`, new XMLSerializer().serializeToString(clone), "image/svg+xml");
+  // A strip below the plot for the watermark, so it never sits on the axis labels.
+  const h = Math.round(r.height) + WATERMARK_HEIGHT;
+  clone.setAttribute("height", String(h));
+  markSvgElement(clone, Math.round(r.width), h);
+  downloadText(`${name}.svg`, new XMLSerializer().serializeToString(clone), "image/svg+xml", "svg");
 }
 
 /**

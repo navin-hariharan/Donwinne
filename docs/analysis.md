@@ -45,6 +45,8 @@ Open it with **Analyse > Reachability graph…**. The model must have no errors 
 
 Below the figures, **Graph** and **Table** switch between two views. Graphs of up to 150 states open as a drawing, the way Snoopy shows them: one box per state with its name (M0 is the initial marking, at the top) and the places that hold tokens (`busy:2` means two tokens in *busy*), and one arrow per firing labelled with the transition. Dead states have a red border. Larger graphs open as the table, which lists the first 300 states: the state number, the marking of each place, and a **Next** column with up to six successors written as `transition → state`. Dead states are marked there too.
 
+**Export** saves the graph as an SVG or PNG picture, a GraphViz DOT file or a CSV table of states (see [Reachability graphs](file-formats.md#reachability-graphs)).
+
 **Click a state** (a box in the graph or a row in the table) to see how it is reached: the dialog closes and the token game starts with the shortest firing sequence from M0 to that state already in its history, so you can step through it with ← and →.
 
 ## Net properties and invariants

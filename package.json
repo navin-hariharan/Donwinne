@@ -3,7 +3,7 @@
   "description": "Donwinne is a Petri nets studio",
   "private": true,
   "license": "SEE LICENSE IN LICENSE.md",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter @pns/web dev",

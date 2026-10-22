@@ -224,6 +224,7 @@ opens:
 | **Stop** / **Explore again** | Stop a long exploration, or start again after changing the limits or the model |
 | States, edges, dead states, **Complete** or **Partial** | The size of the graph, and whether a limit cut it off |
 | "Find states, e.g. M12 or (p1,b)" | Filter the states by name or by a structured place |
+| **Export:** SVG, PNG, DOT, CSV | Save the graph as a picture (up to 1,000 states), a GraphViz file or a table; see [Reachability graphs](file-formats.md#reachability-graphs) |
 
 Each state lists its structured places. **Click a state or an edge** to replay the steps that reach it in the step
 token game.

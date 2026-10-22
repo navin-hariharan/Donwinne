@@ -20,7 +20,7 @@ export function exportLola(net: Net): string {
   requireArcKinds(net, "LoLA", ["normal", "read", "modifier"]);
   const names = assignNames(net);
   const lines: string[] = [];
-  lines.push(`{ ${net.name.replace(/[{}]/g, "")} - exported by Donwinne }`);
+  lines.push(`{ ${net.name.replace(/[{}]/g, "")} }`);
   // Places, grouped by capacity (SAFE n:).
   const byCap = new Map<number | undefined, string[]>();
   for (const p of names.places) {

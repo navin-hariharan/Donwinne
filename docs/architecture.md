@@ -258,7 +258,7 @@ Rules of the store:
 | [BottomPanel.tsx](../packages/editor/src/BottomPanel.tsx), [Plot.tsx](../packages/editor/src/Plot.tsx), [AmbientSim.tsx](../packages/editor/src/AmbientSim.tsx) | Problems, simulation history, plots, fault tree results, the step token game |
 | [Dialogs.tsx](../packages/editor/src/Dialogs.tsx), [Analysis.tsx](../packages/editor/src/Analysis.tsx), [AmbientDialogs.tsx](../packages/editor/src/AmbientDialogs.tsx), [CtlDialog.tsx](../packages/editor/src/CtlDialog.tsx), [RGGraph.tsx](../packages/editor/src/RGGraph.tsx) | Dialogs: new model, help, search, reachability graph (and its drawing), net properties, the ambient dialogs, model checking |
 | [simulation.ts](../packages/editor/src/simulation.ts), [ambient.ts](../packages/editor/src/ambient.ts), [ctl.ts](../packages/editor/src/ctl.ts), [trail.ts](../packages/editor/src/trail.ts) | Token game logic, step token game logic, state spaces for model checking, the red token trail |
-| [fileOps.ts](../packages/editor/src/fileOps.ts), [examples.ts](../packages/editor/src/examples.ts) | Open, save, import, export, print; the example models |
+| [fileOps.ts](../packages/editor/src/fileOps.ts), [examples.ts](../packages/editor/src/examples.ts), [rgExport.ts](../packages/editor/src/rgExport.ts), [watermark.ts](../packages/editor/src/watermark.ts), [version.ts](../packages/editor/src/version.ts) | Open, save, import, export, print; the example models; reachability graph export; the "Exported from Donwinne" mark; the app version |
 | [layout.ts](../packages/editor/src/layout.ts), [geometry.ts](../packages/editor/src/geometry.ts), [responsive.ts](../packages/editor/src/responsive.ts), [music.ts](../packages/editor/src/music.ts) | Auto layout (elkjs), geometry, phone and tablet layouts, sound for music nets |
 | [platform.ts](../packages/editor/src/platform.ts) | The `DesktopBridge` interface, the `MenuCommand` union and `desktop()` |
 | [styles.css](../packages/editor/src/styles.css) | All styles, with light and dark themes |
@@ -410,7 +410,7 @@ pnpm typecheck                              # types
 [vitest.config.ts](../vitest.config.ts) runs every `packages/*/test/**/*.test.ts` in the Node environment (the
 editor's tests drive the store and its logic without a browser), with the `@pns/*` aliases.
 
-The full suite has **33 test files and 604 tests**, and takes about 80 seconds; most of that is the thesis
+The full suite has **35 test files and 613 tests**, and takes about 80 seconds; most of that is the thesis
 reproduction in `thesis.test.ts`.
 
 ### What the tests cover

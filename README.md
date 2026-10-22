@@ -16,7 +16,8 @@
   <img alt="React 18" src="https://img.shields.io/badge/React-18-149eca?logo=react&logoColor=white">
   <img alt="Electron" src="https://img.shields.io/badge/Electron-desktop-47848f?logo=electron&logoColor=white">
   <img alt="Installable web app" src="https://img.shields.io/badge/PWA-works%20offline-5a0fc8">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-604%20passing-2da44e">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.3.0-2563eb">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-613%20passing-2da44e">
 </p>
 
 <p align="center">
@@ -207,7 +208,7 @@ See [docs/simulation.md](docs/simulation.md).
 </tr>
 </table>
 
-- **Reachability graph**, drawn as a graph (or listed as a table for big ones), with its dead states and the bound of each place; click a state to replay the path to it.
+- **Reachability graph**, drawn as a graph (or listed as a table for big ones), with its dead states and the bound of each place; click a state to replay the path to it, and export it as SVG, PNG, GraphViz DOT or CSV.
 - **Net properties** in the style of Charlie: bounded, safe, k-bounded, deadlock free (with the shortest path to a deadlock), dead states, live, dead transitions, dynamic conflict free, reversible and home states.
 - **Invariants:** P- and T-invariants, covering by them (CPI, CTI), minimal siphons and traps, and the siphon-trap property.
 - **Structural properties:** state machine, marked graph, free choice, extended free choice, extended simple, ordinary, homogeneous, pure, conservative, connected, strongly connected and static conflict free, with the incidence matrix.
@@ -283,7 +284,10 @@ See [docs/ctl.md](docs/ctl.md).
 | --- | --- |
 | **Open and save** | Donwinne's own `.pns.json` |
 | **Import** | Snoopy (every net class, with declarations), PNML, ANDL and CANDL |
-| **Export** | Snoopy, PNML, ANDL / CANDL, LoLA, TINA, APNN, PRISM, SBML, CSV, DNF (cut sets), LaTeX / TikZ, SVG, PNG, and printing |
+| **Export** | Snoopy, PNML, ANDL / CANDL, LoLA, TINA, APNN, PRISM, SBML, CSV, DNF (cut sets), LaTeX / TikZ, SVG, PNG, and printing; reachability graphs as SVG, PNG, GraphViz DOT and CSV |
+
+Every exported file is marked *Exported from Donwinne*: visibly below pictures and prints, and as a comment or
+metadata in the other formats, written so the file still opens in its tools.
 
 Work is auto-saved in the browser, and the desktop app adds native file dialogs, the system's recent documents and
 opening `.pns.json` files from the operating system. See [docs/file-formats.md](docs/file-formats.md).
@@ -600,7 +604,7 @@ The full list, with touch gestures, is in [docs/editor.md#keyboard-shortcuts](do
 ## Testing
 
 ```sh
-pnpm test        # 604 tests in 33 files
+pnpm test        # 613 tests in 35 files
 pnpm typecheck
 ```
 

@@ -21,6 +21,8 @@ Donwinne saves models in its own format and exchanges them with other Petri net 
 - [Printing](#printing)
 - [How ambient nets are stored](#how-ambient-nets-are-stored)
 - [Simulation results](#simulation-results)
+- [Reachability graphs](#reachability-graphs)
+- [The "Exported from Donwinne" mark](#the-exported-from-donwinne-mark)
 
 ## Overview
 
@@ -278,7 +280,7 @@ The result is a fault tree with a top event fed by an OR gate over one AND gate 
 
 ## Pictures: SVG, PNG and LaTeX (TikZ)
 
-- **SVG image** saves the current page as a standalone SVG drawing on a white background. While the token game runs, the current marking is drawn.
+- **SVG image** saves the current page as a standalone SVG drawing on a white background, with the [Donwinne mark](#the-exported-from-donwinne-mark) below it. While the token game runs, the current marking is drawn.
 - **PNG image** saves the same drawing as a PNG at twice the screen size.
 - **LaTeX (TikZ picture)** writes a `tikzpicture` of the current page for LaTeX documents. It needs `\usetikzlibrary{petri,arrows.meta}`. Positions are scaled so that 50 units are 1 cm; places, transitions, labels, bend points and arc types are drawn, uncoloured places show up to 6 tokens, and fault tree events and gates are drawn as labelled boxes and circles. Modifier arcs are not handled yet and need their line style edited by hand.
 
@@ -305,3 +307,23 @@ APNs and T-APNs carry three things that ordinary coloured nets do not have: the 
 ## Simulation results
 
 Plots from **Simulate & plot** can be saved as CSV (comma-separated, with a `Time` column and one column per curve) or as an SVG image; see [Exporting results](simulation.md#exporting-results). The analysis report is saved as text from the **Net properties and invariants** dialog; see [The text report](analysis.md#the-text-report).
+
+## Reachability graphs
+
+The **Reachability graph** dialog (and the **Concurrent reachability graph** dialog of ambient nets) has an **Export** row:
+
+| Button | File | Contents |
+| --- | --- | --- |
+| SVG | `<net>-reachability.svg` (`-crg.svg` for a CRG) | The graph drawn as in the dialog: one box per state with its marking, an arrow per firing or step, M0 in blue and dead states in red. Up to 1,000 states. |
+| PNG | `.png` | The same drawing as a PNG. |
+| DOT | `.dot` | The graph for GraphViz (`dot -Tpdf graph.dot -o graph.pdf`) and other graph tools, with the same colours. Any size. |
+| CSV | `.csv` | One row per state: its name, the tokens on each place (the structured places for a CRG), whether it is dead, and its successors as `transition->state`. Any size. |
+
+## The "Exported from Donwinne" mark
+
+Every file Donwinne exports says where it came from:
+
+- **Pictures show it.** SVG and PNG images of the net, of reachability graphs and of plots have a small grey *Exported from Donwinne* in a strip below the drawing, so it never covers part of the net. Prints carry it too (in the browser it is part of the printed drawing; in the desktop app it is printed in the bottom corner), and TikZ pictures end with it as a small grey label.
+- **Other files carry it as metadata**, written so the file still opens in the tools it is meant for: an XML comment `<!-- Exported from Donwinne -->` after the XML declaration in Snoopy, PNML, SBML and SVG files; a first-line comment in ANDL, CANDL and PRISM (`//`), LoLA (`{ … }`), TINA, CSV and DNF (`#`), APNN and TikZ (`%`) and GraphViz (`//`); and `tEXt` chunks (*Software: Donwinne 0.3.0*, *Comment: Exported from Donwinne*) in PNG files. The text report of **Net properties** starts with the line *Exported from Donwinne*.
+
+Donwinne's own importers skip these comments, so an exported file opens again unchanged. Saving a model (**Save**, `.pns.json`) is not an export and adds nothing.

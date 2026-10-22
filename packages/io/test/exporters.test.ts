@@ -187,7 +187,7 @@ describe("CANDL", () => {
 
 describe("LoLA", () => {
   it("writes places, the initial marking and transitions", () => {
-    expect(exportLola(reaction())).toBe(`{ reaction - exported by Donwinne }
+    expect(exportLola(reaction())).toBe(`{ reaction }
 PLACE A, B, C, E;
 MARKING A : 3, B : 4, E : 1;
 TRANSITION r1
