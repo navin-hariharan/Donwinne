@@ -32,9 +32,12 @@ import {
   updateArc,
   updateFTNode,
   updateNet,
+  updateArcs,
   updateNote,
   updatePlace,
+  updatePlaces,
   updateTransition,
+  updateTransitions,
   useStore,
 } from "./store";
 import { ARC_KIND_INFO, Icon } from "./Toolbar";
@@ -127,6 +130,7 @@ export function PropertiesPanel() {
             : parts[0]}
           . Drag to move them together or press Delete to remove them.
         </p>
+        <MultiEdit ids={selection} readOnly={readOnly} />
         {!readOnly && (
           <>
             <h3>Arrange</h3>
@@ -1741,6 +1745,318 @@ function FTNodeProps({ id, readOnly }: { id: string; readOnly: boolean }) {
       <Problems id={id} />
     </aside>
   );
+}
+
+// ---------- editing several elements at once ----------
+
+const MIXED = Symbol("mixed");
+type Shared<V> = V | typeof MIXED;
+
+/** The value every item has for a field, or MIXED when they differ. */
+function shared<T, V>(items: T[], get: (x: T) => V): Shared<V> {
+  const v = get(items[0]);
+  return items.every((x) => get(x) === v) ? v : MIXED;
+}
+
+function MixedInput({
+  value,
+  placeholder,
+  onChange,
+  mono,
+  type,
+  textarea,
+}: {
+  value: Shared<string>;
+  placeholder?: string;
+  onChange: (v: string) => void;
+  mono?: boolean;
+  type?: string;
+  textarea?: boolean;
+}) {
+  const props = {
+    className: mono ? "mono" : undefined,
+    value: value === MIXED ? "" : value,
+    placeholder: value === MIXED ? "(mixed)" : placeholder,
+  };
+  return textarea ? (
+    <textarea rows={3} {...props} onChange={(e) => onChange(e.target.value)} />
+  ) : (
+    <input type={type} {...props} onChange={(e) => onChange(e.target.value)} />
+  );
+}
+
+function MixedCheck({
+  value,
+  onChange,
+  children,
+}: {
+  value: Shared<boolean>;
+  onChange: (v: boolean) => void;
+  children: React.ReactNode;
+}) {
+  const ref = React.useRef<HTMLInputElement>(null);
+  React.useEffect(() => {
+    if (ref.current) ref.current.indeterminate = value === MIXED;
+  });
+  return (
+    <label className="check">
+      <input
+        ref={ref}
+        type="checkbox"
+        checked={value === true}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      {children}
+    </label>
+  );
+}
+
+function MixedSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: Shared<string>;
+  options: { value: string; label: string }[];
+  onChange: (v: string) => void;
+}) {
+  return (
+    <select
+      value={value === MIXED ? "" : value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {value === MIXED && (
+        <option value="" disabled>
+          (mixed)
+        </option>
+      )}
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/**
+ * The attributes several selected elements of one kind share. A field whose values differ shows
+ * "(mixed)"; editing it sets every selected element, as one undo step.
+ */
+function MultiEdit({ ids, readOnly }: { ids: string[]; readOnly: boolean }) {
+  const net = useStore((s) => s.net);
+  const sel = new Set(ids);
+  const places = net.places.filter((p) => sel.has(p.id) && !p.coarse);
+  const transitions = net.transitions.filter(
+    (t) => sel.has(t.id) && !t.coarse,
+  );
+  const arcs = net.arcs.filter((a) => sel.has(a.id));
+  const coloured = isColoured(net.netClass);
+  const tb = timeBase(net.netClass);
+  // One coalesce key per field and selection, so typing in a field is one undo step.
+  const k = (f: string) => `multi-${f}-${ids.join(",")}`;
+
+  if (places.length === ids.length) {
+    const pids = places.map((p) => p.id);
+    const anyContinuous =
+      tb === "continuous" || places.some((p) => p.continuous);
+    return (
+      <fieldset disabled={readOnly}>
+        <h3>Shared by these places</h3>
+        {coloured && (
+          <Field label="Colour set">
+            <MixedSelect
+              value={shared(places, (p) => p.colourSet ?? "Dot")}
+              options={net.declarations.colourSets.map((c) => ({
+                value: c.name,
+                label: c.name,
+              }))}
+              onChange={(v) => updatePlaces(pids, { colourSet: v })}
+            />
+          </Field>
+        )}
+        <Field label={anyContinuous ? "Initial amount" : "Initial marking"}>
+          <MixedInput
+            mono
+            value={shared(places, (p) => p.marking)}
+            placeholder={coloured ? "empty" : "0"}
+            onChange={(v) => updatePlaces(pids, { marking: v }, k("marking"))}
+          />
+        </Field>
+        <Field label="Capacity" hint="Empty means no limit">
+          <MixedInput
+            type="number"
+            value={shared(places, (p) => String(p.capacity ?? ""))}
+            onChange={(v) =>
+              updatePlaces(
+                pids,
+                { capacity: v ? Math.max(1, Number(v)) : undefined },
+                k("cap"),
+              )
+            }
+          />
+        </Field>
+        {tb === "hybrid" && (
+          <MixedCheck
+            value={shared(places, (p) => !!p.continuous)}
+            onChange={(v) => updatePlaces(pids, { continuous: v || undefined })}
+          >
+            Continuous places
+          </MixedCheck>
+        )}
+        {anyContinuous && (
+          <MixedCheck
+            value={shared(places, (p) => !!p.fixed)}
+            onChange={(v) => updatePlaces(pids, { fixed: v || undefined })}
+          >
+            Fixed (amounts stay constant during simulation)
+          </MixedCheck>
+        )}
+        <MixedCheck
+          value={shared(places, (p) => !!p.logical)}
+          onChange={(v) => updatePlaces(pids, { logical: v || undefined })}
+        >
+          Logical places
+        </MixedCheck>
+        {isAmbient(net.netClass) && (
+          <MixedCheck
+            value={shared(places, (p) => !!p.gluing)}
+            onChange={(v) => updatePlaces(pids, { gluing: v || undefined })}
+          >
+            Gluing (interface) places
+          </MixedCheck>
+        )}
+        <Field label="Comment">
+          <MixedInput
+            textarea
+            value={shared(places, (p) => p.comment ?? "")}
+            onChange={(v) =>
+              updatePlaces(pids, { comment: v || undefined }, k("comment"))
+            }
+          />
+        </Field>
+      </fieldset>
+    );
+  }
+
+  if (transitions.length === ids.length) {
+    const tids = transitions.map((t) => t.id);
+    return (
+      <fieldset disabled={readOnly}>
+        <h3>Shared by these transitions</h3>
+        {coloured && (
+          <Field label="Guard">
+            <MixedInput
+              mono
+              value={shared(transitions, (t) => t.guard ?? "")}
+              placeholder="always true"
+              onChange={(v) =>
+                updateTransitions(tids, { guard: v || undefined }, k("guard"))
+              }
+            />
+          </Field>
+        )}
+        {tb && (
+          <Field label="Rate / weight / delay">
+            <MixedInput
+              mono
+              value={shared(transitions, (t) => t.rate ?? "")}
+              placeholder="MassAction(1)"
+              onChange={(v) => updateTransitions(tids, { rate: v }, k("rate"))}
+            />
+          </Field>
+        )}
+        {net.netClass === "timed" && (
+          <Field label="Firing interval">
+            <div className="pair">
+              <MixedInput
+                mono
+                value={shared(transitions, (t) => t.interval?.[0] ?? "0")}
+                onChange={(v) =>
+                  updateTransitions(
+                    tids,
+                    (t) => ({ interval: [v, t.interval?.[1] ?? "inf"] }),
+                    k("eft"),
+                  )
+                }
+              />
+              <span>to</span>
+              <MixedInput
+                mono
+                value={shared(transitions, (t) => t.interval?.[1] ?? "inf")}
+                onChange={(v) =>
+                  updateTransitions(
+                    tids,
+                    (t) => ({ interval: [t.interval?.[0] ?? "0", v] }),
+                    k("lft"),
+                  )
+                }
+              />
+            </div>
+          </Field>
+        )}
+        <MixedCheck
+          value={shared(transitions, (t) => !!t.horizontal)}
+          onChange={(v) =>
+            updateTransitions(tids, { horizontal: v || undefined })
+          }
+        >
+          Draw horizontally
+        </MixedCheck>
+        <Field label="Comment">
+          <MixedInput
+            textarea
+            value={shared(transitions, (t) => t.comment ?? "")}
+            onChange={(v) =>
+              updateTransitions(tids, { comment: v || undefined }, k("comment"))
+            }
+          />
+        </Field>
+      </fieldset>
+    );
+  }
+
+  if (arcs.length === ids.length) {
+    const aids = arcs.map((a) => a.id);
+    const fromPlaces = arcs.every((a) =>
+      net.places.some((p) => p.id === a.source),
+    );
+    const kinds = (
+      net.netClass === "pt"
+        ? ARC_KINDS.filter((kd) => kd !== "modifier")
+        : arcKindsFor(net.netClass)
+    ).filter((kd) => kd === "normal" || fromPlaces);
+    const weighted = arcs.every(
+      (a) => a.kind !== "reset" && a.kind !== "modifier",
+    );
+    return (
+      <fieldset disabled={readOnly}>
+        <h3>Shared by these arcs</h3>
+        {net.netClass !== "freestyle" && (
+          <Field label="Type">
+            <MixedSelect
+              value={shared(arcs, (a) => a.kind)}
+              options={kinds.map((kd) => ({
+                value: kd,
+                label: ARC_KIND_INFO[kd].label,
+              }))}
+              onChange={(v) => updateArcs(aids, { kind: v as ArcKind })}
+            />
+          </Field>
+        )}
+        {weighted && net.netClass !== "freestyle" && (
+          <Field label={coloured ? "Inscription" : "Weight"}>
+            <MixedInput
+              mono
+              value={shared(arcs, (a) => a.inscription)}
+              onChange={(v) => updateArcs(aids, { inscription: v }, k("insc"))}
+            />
+          </Field>
+        )}
+      </fieldset>
+    );
+  }
+  return null;
 }
 
 function plural(n: number, one: string, many = one + "s") {

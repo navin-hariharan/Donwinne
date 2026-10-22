@@ -86,7 +86,7 @@ The mark draws a "D" as a Petri net: the stem is a transition, and two arcs lead
 | --- | --- |
 | Overview | `hero-light.png`, `hero-dark.png`, `editor-tour.png`, `dark-mode.png`, `desktop-app.png` |
 | Editing | `new-dialog.png`, `class-menu.png`, `arc-menu.png`, `file-menu.png`, `properties-panel.png`, `declarations.png`, `element-table.png`, `subnets.png`, `subnet-parent.png`, `help.png` |
-| Simulation | `token-game.png`, `timed-token-game.png`, `coloured-simulation-dark.png`, `stochastic-plot.png`, `continuous-plot.png`, `hybrid-plot.png` |
+| Simulation | `token-game.png`, `token-trail.png`, `timed-token-game.png`, `coloured-simulation-dark.png`, `stochastic-plot.png`, `continuous-plot.png`, `hybrid-plot.png` |
 | Analysis | `reachability-graph.png`, `net-properties.png`, `invariants.png`, `fault-tree.png`, `fault-tree-analysis.png` |
 | Ambient Petri nets | `fig-3-1.png`, `ambient-garage.png`, `ambient-conference.png`, `step-game.png`, `crg.png`, `apn-properties.png`, `building-blocks.png`, `compose.png`, `tapn-construction.png`, `tapn-net.png`, `equivalence.png` |
 | Verification | `ctl-dialog.png`, `ctl-templates.png`, `paths.png`, `fault-tolerance.png` |

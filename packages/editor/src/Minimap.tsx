@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
-import { CSS_PALETTE, NetDrawing } from "./NetDrawing";
-import { netBounds, pageView } from "./geometry";
+import React, { useDeferredValue, useEffect, useRef, useState } from "react";
+import { CSS_PALETTE, NetDrawing, useLayoutStableNet } from "./NetDrawing";
+import { labelCutoff, netBounds, pageView } from "./geometry";
 import { compiled, useStore } from "./store";
 
 const W = 160;
@@ -8,11 +8,13 @@ const H = 104;
 
 /** Overview of the current page with the visible area; click or drag to move around. */
 export function Minimap() {
-  const net = useStore((s) => s.net);
+  // Redrawing a big net here must not hold up the canvas during a drag: it can lag behind a little.
+  const net = useDeferredValue(useStore((s) => s.net));
   const page = useStore((s) => s.page);
   const view = useStore((s) => s.view);
   const [size, setSize] = useState({ w: 800, h: 600 });
   const dragging = useRef(false);
+  const stableNet = useLayoutStableNet(net);
 
   useEffect(() => {
     const el = document.querySelector<SVGSVGElement>("svg.canvas");
@@ -68,7 +70,8 @@ export function Minimap() {
         onPointerUp={() => (dragging.current = false)}
       >
         <g transform={`translate(${ox},${oy}) scale(${k}) translate(${-x0},${-y0})`} style={{ pointerEvents: "none" }}>
-          <NetDrawing net={vnet} cn={compiled(net)} palette={CSS_PALETTE} ghosts={pv.ghosts} />
+          {/* No labels: at this size they are specks, and on a big net they would be most of the work. */}
+          <NetDrawing net={vnet} cn={compiled(stableNet)} palette={CSS_PALETTE} ghosts={pv.ghosts} labelMin={labelCutoff(k)} />
           <rect x={vis.x} y={vis.y} width={vis.w} height={vis.h} style={{ fill: "var(--accent)", fillOpacity: 0.08, stroke: "var(--accent)", strokeWidth: 2 / k }} />
         </g>
       </svg>

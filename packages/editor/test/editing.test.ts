@@ -34,10 +34,12 @@ describe("editing", () => {
     expect(pasted.has(copy.source) && pasted.has(copy.target)).toBe(true);
   });
 
-  it("rejects place-to-place arcs and duplicate arcs", () => {
+  it("rejects place-to-place arcs and never duplicates an arc", () => {
     const { p0, p1, t0 } = chain();
     expect(addArc(p0, p1)).toMatch(/place and a transition/);
-    expect(addArc(p0, t0)).toMatch(/already exists/);
+    const arcs = useStore.getState().net.arcs.length;
+    expect(addArc(p0, t0)).toBeNull();
+    expect(useStore.getState().net.arcs).toHaveLength(arcs);
   });
 
   it("groups nodes into a subnet without changing behaviour", () => {

@@ -16,7 +16,7 @@
   <img alt="React 18" src="https://img.shields.io/badge/React-18-149eca?logo=react&logoColor=white">
   <img alt="Electron" src="https://img.shields.io/badge/Electron-desktop-47848f?logo=electron&logoColor=white">
   <img alt="Installable web app" src="https://img.shields.io/badge/PWA-works%20offline-5a0fc8">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-556%20passing-2da44e">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-604%20passing-2da44e">
 </p>
 
 <p align="center">
@@ -144,7 +144,10 @@ What you can do:
 - **Arrange.** Align and distribute, snap to grid, colour nodes, add notes, and run auto layout (flow, top to bottom, organic, or the selection only).
 - **Structure big models.** Group a selection into a **subnet** (Ctrl+G), open it, go back with the breadcrumbs, and see the whole hierarchy in **View > Element table and hierarchy**, where every place, transition and arc can be filtered and edited in one table.
 - **Declare things, Snoopy style.** Constants, colour sets (int, bool, string, enumerations, products, aliases, subsets and unions), variables, functions such as `hill(S, K, n) = S^n / (K^n + S^n)`, and observers that plot an expression over a run.
-- **Undo up to 300 steps**, find by name, light and dark themes, auto-save in the browser, and printing.
+- **Edit many at once.** Select several places, transitions or arcs and change their marking, capacity, rate, guard or weight together; fields that differ show *(mixed)*. Sort the element table by any column and Ctrl- or Shift-click rows to select.
+- **Find your way in big nets.** Find (Ctrl+F) zooms to each match and makes it pulse, or selects all matches at once; Shift+F zooms to the selection; the view scrolls when you drag to its edge; tiny labels are hidden when zoomed far out, and only the part in view is drawn, so nets with thousands of nodes stay smooth.
+- **Paste where you point.** Copies land under the mouse with readable names (`buffer_2`, `buffer_3`). Drawing an arc that already exists opens its weight instead of adding a second one.
+- **Undo up to 300 steps**, light and dark themes, auto-save in the browser, recent files in the start dialog, and printing.
 
 More in [docs/editor.md](docs/editor.md).
 
@@ -183,6 +186,8 @@ ones that make sense for it. Every class, every arc and the declarations languag
 </table>
 
 - **Token game** for every discrete class: fire by clicking, step back and forward, fire at random, or run and pause. In coloured nets, every enabled binding is offered.
+- **Why can't it fire?** Clicking or hovering over a transition that cannot fire says why ("stock has 0 tokens, needs 1", an inhibitor arc that blocks, a false guard, a full output place), and the token game tab lists every blocked transition with its reason.
+- **Red token trail** that follows the tokens through the net, so a mistake in a large model shows up as the place where the trail stops. On a deadlock the whole route turns solid red, the stuck tokens pulse, and one click zooms to them.
 - **Timed token game** with a global clock and per-transition firing intervals.
 - **Music nets** play a note each time a transition fires.
 - **Stochastic simulation** with Gillespie's direct method, many runs averaged, with a seed for repeatable results.
@@ -202,7 +207,7 @@ See [docs/simulation.md](docs/simulation.md).
 </tr>
 </table>
 
-- **Reachability graph** with its dead states and the bound of each place.
+- **Reachability graph**, drawn as a graph (or listed as a table for big ones), with its dead states and the bound of each place; click a state to replay the path to it.
 - **Net properties** in the style of Charlie: bounded, safe, k-bounded, deadlock free (with the shortest path to a deadlock), dead states, live, dead transitions, dynamic conflict free, reversible and home states.
 - **Invariants:** P- and T-invariants, covering by them (CPI, CTI), minimal siphons and traps, and the siphon-trap property.
 - **Structural properties:** state machine, marked graph, free choice, extended free choice, extended simple, ordinary, homogeneous, pure, conservative, connected, strongly connected and static conflict free, with the incidence matrix.
@@ -581,11 +586,12 @@ Press **?** in the app for the quick guide. Ctrl means ⌘ on a Mac.
 | Ctrl+G, Ctrl+L, Ctrl+F | Group into subnet, auto layout, find |
 | Ctrl+N, O, S, Shift+S, P | New, open, save, save as, print |
 | Ctrl+= / Ctrl+−, Ctrl+0 or **F** | Zoom in, zoom out, zoom to fit |
+| **Shift+F** | Zoom to the selection |
 | Ctrl+wheel, pinch | Zoom |
 | Space+drag, right-drag, middle-drag | Pan |
 | **M**, **G**, **B** | Overview map, snap to grid, bottom panel |
 | **S** | Start the token game |
-| In the token game: **←** / **→**, **R**, **X**, **Space**, **Esc** | Back, forward, random firing, maximal step (ambient nets), run or pause, stop |
+| In the token game: **←** / **→**, **R**, **X**, **T**, **Space**, **Esc** | Back, forward, random firing, maximal step (ambient nets), red token trail on or off, run or pause, stop |
 
 The full list, with touch gestures, is in [docs/editor.md#keyboard-shortcuts](docs/editor.md#keyboard-shortcuts).
 
@@ -594,7 +600,7 @@ The full list, with touch gestures, is in [docs/editor.md#keyboard-shortcuts](do
 ## Testing
 
 ```sh
-pnpm test        # 556 tests in 29 files
+pnpm test        # 604 tests in 33 files
 pnpm typecheck
 ```
 

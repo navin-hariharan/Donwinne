@@ -8,11 +8,14 @@ import { unfold } from "@pns/sim";
 import { autoLayout } from "./layout";
 import { EXPORT_PALETTE, NetDrawing } from "./NetDrawing";
 import { netBounds, pageView } from "./geometry";
-import { compiled, currentMarking, loadNet, markSaved, newNet, toast, useStore } from "./store";
+import { RecentFile, compiled, currentMarking, forgetRecent, loadNet, markSaved, newNet, recentText, rememberFile, toast, useStore } from "./store";
 import { FileFilter, desktop } from "./platform";
 
 const NET_FILTER: FileFilter[] = [{ name: "Donwinne model", extensions: ["pns.json", "json"] }];
 const PNML_FILTER: FileFilter[] = [{ name: "PNML", extensions: ["pnml", "xml"] }];
+/** Every extension `importAny` can read: native, PNML, ANDL/CANDL, DNF fault trees and all Snoopy classes. */
+const IMPORT_EXTS = ["pns.json", "json", "pnml", "xml", "andl", "candl", "dnf", "txt", ...io.SNOOPY_EXTENSIONS];
+const MODELS_FILTER: FileFilter[] = [{ name: "Models", extensions: IMPORT_EXTS }];
 
 function baseName(name: string | null, fallback: string): string {
   return (name ?? fallback).replace(/\.pns\.json$|\.json$|\.pnml$|\.xml$/i, "");
@@ -69,6 +72,7 @@ export function cmdOpenExample(net: Net) {
 export function openText(text: string, name: string, path: string | null = null, handle: unknown = null) {
   try {
     const { net, warnings, native } = importAny(text, name);
+    rememberFile(name, text);
     if (native) {
       loadNet(net, name, path, handle);
       toast(`Opened ${name}`);
@@ -86,14 +90,16 @@ export async function cmdOpen() {
   if (!confirmDiscard()) return;
   const d = desktop();
   if (d) {
-    const f = await d.openFile([...NET_FILTER, ...PNML_FILTER]);
+    const f = await d.openFile([...MODELS_FILTER, ...NET_FILTER, ...PNML_FILTER]);
     if (f) openText(f.content, f.name, f.path);
     return;
   }
   if (fsApi) {
     try {
+      // The picker wants single-part extensions; .json already covers .pns.json.
+      const exts = IMPORT_EXTS.filter((e) => !e.includes(".")).map((e) => `.${e}`);
       const [h] = await (window as unknown as { showOpenFilePicker(o: unknown): Promise<FsHandle[]> }).showOpenFilePicker({
-        types: [{ description: "Petri net", accept: { "application/json": [".json"], "application/xml": [".pnml", ".xml"] } }],
+        types: [{ description: "Petri net or fault tree", accept: { "application/octet-stream": exts } }],
       });
       const file = await h.getFile();
       openText(await file.text(), file.name, null, file.name.endsWith(".json") ? h : null);
@@ -102,8 +108,23 @@ export async function cmdOpen() {
     }
     return;
   }
-  const file = await pickFile(".json,.pnml,.xml");
+  const file = await pickFile(IMPORT_EXTS.map((e) => `.${e}`).join(","));
   if (file) openText(await file.text(), file.name);
+}
+
+/**
+ * Reopen a recent file from the copy kept when it was last opened or saved. It opens without a path,
+ * so saving asks where to, rather than overwriting a file that may have changed since.
+ */
+export function cmdOpenRecent(r: RecentFile) {
+  if (!confirmDiscard()) return;
+  const text = recentText(r);
+  if (text === null) {
+    forgetRecent(r);
+    toast(`${r.name} is no longer kept here; open it with Open…`, "error");
+    return;
+  }
+  openText(text, r.name);
 }
 
 export async function cmdImportPnml() {
@@ -127,6 +148,7 @@ export async function cmdSave(saveAs = false) {
     const r = await d.saveFile(saveAs ? null : s.filePath, content, suggested, NET_FILTER);
     if (r) {
       markSaved(r.name, r.path);
+      rememberFile(r.name, content);
       toast(`Saved ${r.name}`);
     }
     return;
@@ -144,6 +166,7 @@ export async function cmdSave(saveAs = false) {
       await w.write(content);
       await w.close();
       markSaved(h.name, null, h);
+      rememberFile(h.name, content);
       toast(`Saved ${h.name}`);
     } catch (e) {
       if ((e as Error).name !== "AbortError") toast(`Could not save: ${(e as Error).message}`, "error");
@@ -152,6 +175,7 @@ export async function cmdSave(saveAs = false) {
   }
   download(suggested, content, "application/json");
   markSaved(suggested, null);
+  rememberFile(suggested, content);
 }
 
 async function exportData(name: string, data: string | Uint8Array, type: string, filters: FileFilter[]) {
@@ -241,6 +265,8 @@ export interface ExportFormat {
   type: string;
   applies: (c: NetClass) => boolean;
   run: (net: Net) => string | Promise<string | Uint8Array> | null;
+  /** What the format leaves out of this net, shown to the user after exporting. */
+  warnings?: (net: Net) => string[];
 }
 
 const petri = (c: NetClass) => !isFaultTree(c) && c !== "freestyle";
@@ -248,7 +274,7 @@ const plain = (c: NetClass) => petri(c) && !isColoured(c);
 const discrete = (c: NetClass) => ["pt", "xpt", "timed", "stochastic", "music"].includes(c);
 
 export const EXPORT_FORMATS: ExportFormat[] = [
-  { id: "snoopy", label: "Snoopy file", ext: (n) => snoopyExtension(n), type: "application/xml", applies: () => !!ioFn("exportSnoopy"), run: (n) => ioFn("exportSnoopy")!(n) },
+  { id: "snoopy", label: "Snoopy file", ext: (n) => snoopyExtension(n), type: "application/xml", applies: () => !!ioFn("exportSnoopy"), run: (n) => ioFn("exportSnoopy")!(n), warnings: (n) => io.exportSnoopyWithWarnings(n).warnings },
   { id: "pnml", label: "PNML", ext: () => "pnml", type: "application/xml", applies: petri, run: (n) => exportPnml(n) },
   { id: "andl", label: "ANDL (Charlie, Marcie, Spike)", ext: () => "andl", type: "text/plain", applies: (c) => plain(c) && !!ioFn("exportAndl"), run: (n) => ioFn("exportAndl")!(n) },
   { id: "candl", label: "CANDL (coloured ANDL)", ext: () => "candl", type: "text/plain", applies: (c) => isColoured(c) && !!ioFn("exportCandl"), run: (n) => ioFn("exportCandl")!(n) },
@@ -297,19 +323,19 @@ export async function cmdExport(id: string) {
     if (data === null) return;
     const name = `${baseName(s.fileName, s.net.name || "net")}.${f.ext(s.net)}`;
     await exportData(name, data, f.type, [{ name: f.label, extensions: [f.ext(s.net).split(".").pop()!] }]);
+    const w = f.warnings?.(s.net) ?? [];
+    if (w.length) toast(`Exported ${f.label} without ${w.length === 1 ? "one detail" : `${w.length} details`} it cannot hold: ${w[0]}${w.length > 1 ? " (and more)" : ""}`, "error");
   } catch (e) {
     toast(`Could not export ${f.label}: ${(e as Error).message}`, "error");
   }
 }
-
-const IMPORT_EXTS = ["pns.json", "json", "pnml", "xml", "andl", "candl", "dnf", "txt", ...io.SNOOPY_EXTENSIONS];
 
 /** Open anything we can read: native, Snoopy, PNML, ANDL or a DNF fault tree. */
 export async function cmdImport() {
   if (!confirmDiscard()) return;
   const d = desktop();
   if (d) {
-    const f = await d.openFile([{ name: "Models", extensions: IMPORT_EXTS }]);
+    const f = await d.openFile(MODELS_FILTER);
     if (f) openText(f.content, f.name, f.path);
     return;
   }
@@ -358,9 +384,12 @@ export function cmdPrint() {
   const title = (s.net.name || "Petri net").replace(/[<>&]/g, "");
   w.document.write(
     `<!doctype html><title>${title}</title><style>@page{margin:12mm}body{margin:0;font-family:sans-serif}h1{font-size:14px;margin:0 0 8px}svg{max-width:100%;height:auto}</style>` +
-      `<h1>${title} · ${NET_CLASS_LABELS[s.net.netClass]}</h1>${svg.replace(/^<\?xml[^>]*>/, "")}<script>onload=()=>{print();}<\/script>`,
+      `<h1>${title} · ${NET_CLASS_LABELS[s.net.netClass]}</h1>${svg.replace(/^<\?xml[^>]*>/, "")}`,
   );
   w.document.close();
+  // Print from here rather than from a script in the new page, which the Content Security Policy blocks.
+  w.focus();
+  w.print();
 }
 
 /** A TikZ picture of the current page, for LaTeX documents. */

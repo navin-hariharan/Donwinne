@@ -9,6 +9,7 @@
     "dev": "pnpm --filter @pns/web dev",
     "build": "pnpm --filter @pns/web build",
     "test": "vitest run",
+    "bench": "vitest bench --run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "desktop": "pnpm build && pnpm --filter @pns/desktop start",
     "desktop:dist": "pnpm build && pnpm --filter @pns/desktop dist"

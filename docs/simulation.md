@@ -10,6 +10,7 @@ Donwinne runs nets in two ways. The **token game** fires transitions one at a ti
   - [History: back and forward](#history-back-and-forward)
   - [Random firing and running](#random-firing-and-running)
   - [Keep this marking](#keep-this-marking)
+  - [The red token trail and deadlocks](#the-red-token-trail-and-deadlocks)
   - [Coloured nets in the token game](#coloured-nets-in-the-token-game)
   - [The timed token game](#the-timed-token-game)
   - [Music nets](#music-nets)
@@ -38,7 +39,7 @@ In stochastic, continuous and hybrid nets the token game uses the plain firing r
 
 Start the token game with the **Simulate** side of the Edit / Simulate switch, **Analyse > Play the token game**, or the S key. The model must have no errors first; if it has, the **Problems** tab opens with the message "Fix N problems before simulating". While the game runs:
 
-- the palette is replaced by the simulation controls;
+- the palette is greyed out and the simulation controls float at the top of the canvas, with a step counter;
 - editing is disabled (undo, delete, drawing and the properties panel are read-only);
 - enabled transitions are drawn in green and places show the current marking;
 - the bottom panel shows the **Token game** tab (on phones it stays folded so the net remains visible; open it with B or the panel's tab).
@@ -49,14 +50,14 @@ Stop with the **Edit** side of the switch, **Analyse > Stop the token game**, or
 
 ### Firing transitions
 
-Click a green (enabled) transition on the canvas to fire it. Clicking a transition that cannot fire shows "… is not enabled". You can also fire from the **Enabled (N)** list in the token game tab, which shows each enabled transition (and binding, in coloured nets). When nothing can fire, the tab says "Nothing is enabled. The net is dead in this marking."
+Click a green (enabled) transition on the canvas to fire it. Clicking a transition that cannot fire says why, for example "reuse cannot fire: stock has 0 tokens, needs 1". Hovering over it shows the same reason, and hovering over a place shows how many tokens it holds now. The reasons name a place that is short of tokens, a read or equal arc that is not satisfied, an inhibitor arc that blocks, a false guard, or an output place that would go over its capacity. You can also fire from the **Enabled (N)** list in the token game tab, which shows each enabled transition (and binding, in coloured nets). When nothing can fire, the tab says "Nothing is enabled. The net is dead in this marking."
 
 The tab has three columns:
 
 | Column | Contents |
 | --- | --- |
 | History (N steps) | Every marking so far, starting with *Initial marking*, labelled with the transition that led to it. Click an entry to go back to it. |
-| Enabled (N) | A button for each enabled transition and binding (up to 200). |
+| Enabled (N) | A button for each enabled transition and binding (up to 200). Below it, **Cannot fire (N)** lists every other transition with the reason it is blocked (open by default when nothing can fire); click one to find it on the canvas. Timed nets show their clocks instead. |
 | Marking | The current marking of every place. Click a row to select the place on the canvas. |
 
 ### History: back and forward
@@ -78,6 +79,25 @@ Going back does not delete the later steps: they stay greyed out in the history 
 ### Keep this marking
 
 **Keep this marking** makes the current marking the net's initial marking, as an undoable edit, and restarts the game from it with the message "Current marking saved as the initial marking". It is useful to set up a starting situation by playing.
+
+### The red token trail and deadlocks
+
+![The red token trail leading to a deadlock](assets/images/token-trail.png)
+
+To help find mistakes in large nets, the token game draws a **red trail** of where the tokens went: every transition that fired, the arcs the tokens moved along and the places they passed through get a red outline. The latest firings are drawn strongest and older ones fade a little, so you can follow the route the tokens took. Read, inhibitor, equal and modifier arcs only look at a place, so they are not part of the trail. When the trail goes into a subnet, the subnet's node on the parent page is outlined too.
+
+When the token game reaches a **deadlock** (nothing can fire, and in a timed net waiting would not help):
+
+- the whole trail turns solid red and stays that way, showing the complete route that led to the deadlock;
+- the places that still hold tokens pulse with a red ring: these are the tokens that are stuck;
+- a banner says how many firings led there, with **Show stuck tokens** (zooms to them) and **Step back**.
+
+| Control | Key | Action |
+| --- | --- | --- |
+| Token trail (the red curve button in the token game bar) | T | Show or hide the trail. The choice is remembered. |
+| Clear trail | | Start the trail again from the current marking. |
+
+The trail is rebuilt from the history, so stepping back and forward moves it too. It is drawn only on the canvas, not in exported images.
 
 ### Coloured nets in the token game
 
@@ -127,6 +147,12 @@ Rates use the transitions' rate functions and the constants in the declarations 
 | Seed | random | whole number | stochastic and hybrid | The same seed gives the same result. Leave it empty for a different result each time. |
 
 Settings and the last result are kept while you switch tabs or play the token game. They are reset when another model is opened.
+
+The simulator checks its settings before it starts, so a mistyped value fails at once with a clear message instead of
+running for a long time or running out of memory. Times, tolerances and step sizes must be finite numbers (and step
+sizes and tolerances positive). A single request may use at most 10,000 runs in all (runs × fuzzy parameter samples)
+and keep at most 5,000,000 numbers in its result (output points × series, times the runs kept); the limits are
+`SIMULATION_LIMITS` in [simulate.ts](../packages/sim/src/simulate.ts).
 
 ### Reading the plot
 

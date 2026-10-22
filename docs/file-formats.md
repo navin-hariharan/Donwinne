@@ -74,10 +74,9 @@ When opening, Donwinne checks the file and refuses it with a clear message if it
 - "Unknown net class …"
 - "The modulus must be a whole number of at least 2."
 - "The id "…" is used by both … and …; ids must be unique."
-- "Arc "…" must connect a place and a transition."
+- "Arc "…" must connect a place and a transition." (not for [freestyle nets](net-classes.md#freestyle-nets), where any two nodes may be connected)
 - "The subnets of … and … contain each other (a cycle in the hierarchy)."
 
-There is one known limitation: a [freestyle net](net-classes.md#freestyle-nets) with an arc between two places or two transitions can be saved, but is refused when opened again.
 
 The format is defined in [`../packages/core/src/model.ts`](../packages/core/src/model.ts) and checked in [`../packages/io/src/native.ts`](../packages/io/src/native.ts).
 

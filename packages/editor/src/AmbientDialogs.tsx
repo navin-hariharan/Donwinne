@@ -584,7 +584,7 @@ export function ApnPropsDialog({ Modal, close }: { Modal: ModalType; close: () =
               <span className="muted small"> {r.def}</span>
             </th>
             <td>
-              <Verdict ok={r.check ? r.check.ok : null} />
+              <Verdict ok={r.check && !("unknown" in r.check && r.check.unknown) ? r.check.ok : null} />
             </td>
             <td className="small">
               {r.check?.reason}

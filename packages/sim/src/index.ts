@@ -2,7 +2,7 @@
 // Petri nets (Snoopy semantics), the timed token game, reachability graphs and CSV export.
 // Pure TypeScript without runtime dependencies besides @pns/core: runs in Node and Web Workers.
 
-export { simulate, simulateAsync, simulateSteps, outputTimes, alphaSamples } from "./simulate";
+export { simulate, simulateAsync, simulateSteps, outputTimes, alphaSamples, SIMULATION_LIMITS } from "./simulate";
 export type { SimulationOptions, Trace, Series, FuzzyBand, SolverName } from "./simulate";
 export { unfold, uncolouredClass, colourIdent } from "./unfold";
 export type { UnfoldResult, UnfoldMapping, UnfoldedPlace, UnfoldedTransition, UnfoldOptions } from "./unfold";

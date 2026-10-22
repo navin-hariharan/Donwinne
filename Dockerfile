@@ -27,7 +27,7 @@ COPY packages ./packages
 COPY apps/web ./apps/web
 RUN pnpm test && pnpm --filter @pns/web build
 
-FROM nginx:1.27-alpine
+FROM nginx:1.30-alpine
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 EXPOSE 80

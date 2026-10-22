@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
-import { Net, enabledBindings, isColoured, isFaultTree, isFuzzy, showBinding, showTokens, timeBase } from "@pns/core";
+import { Net, disabledReasons, enabledBindings, isColoured, isFaultTree, isFuzzy, showBinding, showTokens, timeBase } from "@pns/core";
 import { SolverName, Trace, simulateAsync, traceToCsv } from "@pns/sim";
 import { faultTreeToPetriNet, importanceMeasures, layoutFaultTree, reliabilityCurve, topEventAnalysis, ImportanceMeasure, TopEventResult } from "@pns/ft";
 import { advanceTime, compiled, enterPage, fireTransition, fmtTime, loadNet, problemsOf, select, simGoto, timedEnabled, toast, useStore, edit } from "./store";
@@ -134,6 +134,13 @@ function SimPanel() {
     return cn.transitions.flatMap((t) => enabledBindings(cn, t.index, M).bindings.map((b) => ({ t, b, info: undefined })));
   }, [cn, M, ts]);
 
+  // Transitions that cannot fire now, with the reason, so a stuck model can be diagnosed.
+  const blocked = useMemo(() => {
+    if (!M || ts) return [];
+    const on = new Set(enabled.map((e) => e.t.index));
+    return cn.transitions.filter((t) => !on.has(t.index)).slice(0, 200).map((t) => ({ t, why: disabledReasons(cn, t.index, M) }));
+  }, [cn, M, ts, enabled]);
+
   useEffect(() => {
     listRef.current?.querySelector(".current")?.scrollIntoView({ block: "nearest" });
   }, [simIndex]);
@@ -183,6 +190,18 @@ function SimPanel() {
               </button>
             ))}
           </div>
+        )}
+        {blocked.length > 0 && (
+          <details className="blocked" open={enabled.length === 0}>
+            <summary>Cannot fire ({blocked.length})</summary>
+            <ul className="blocked-list">
+              {blocked.map(({ t, why }) => (
+                <li key={t.id} onClick={() => goTo(t.id)} title="Show on the canvas">
+                  <b>{t.name}</b> <span className="muted">{why.join("; ") || "not enabled"}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
       </div>
       <div className="sim-col">
@@ -453,8 +472,16 @@ function exportPlotImage(name: string) {
   const legend = [...document.querySelectorAll(".plot-legend li label")].filter((l) => (l.querySelector("input") as HTMLInputElement)?.checked);
   legend.forEach((l, i) => {
     const color = (l.querySelector(".dot") as HTMLElement).style.background;
-    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    g.innerHTML = `<rect x="${r.width - 150}" y="${22 + i * 16}" width="10" height="10" fill="${color}"/><text x="${r.width - 135}" y="${31 + i * 16}" font-size="11" font-family="sans-serif">${(l.textContent ?? "").replace(/[<&]/g, "")}</text>`;
+    // Build the legend node by node: names come from the model and must never be read as markup.
+    const NS = "http://www.w3.org/2000/svg";
+    const g = document.createElementNS(NS, "g");
+    const swatch = document.createElementNS(NS, "rect");
+    for (const [k, v] of [["x", r.width - 150], ["y", 22 + i * 16], ["width", 10], ["height", 10]] as const) swatch.setAttribute(k, String(v));
+    swatch.setAttribute("fill", color);
+    const text = document.createElementNS(NS, "text");
+    for (const [k, v] of [["x", r.width - 135], ["y", 31 + i * 16], ["font-size", 11], ["font-family", "sans-serif"]] as const) text.setAttribute(k, String(v));
+    text.textContent = l.textContent ?? "";
+    g.append(swatch, text);
     if (i < 20) clone.appendChild(g);
   });
   const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");

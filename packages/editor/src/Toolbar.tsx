@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ArcKind, FTNodeType, NET_CLASS_LABELS, NetClass, arcKindsFor, isAmbient, isColoured, isFaultTree, timeBase } from "@pns/core";
 import { EXPORT_FORMATS, cmdUnfold, exportProblem, cmdExport, cmdImport, cmdOpen, cmdOpenExample, cmdPrint, cmdSave } from "./fileOps";
 import { EXAMPLES } from "./examples";
-import { TOOL_MIME, placeTool, zoomBy } from "./Canvas";
+import { TOOL_MIME, placeTool, zoomBy, zoomToSelection } from "./Canvas";
 import { autoLayout } from "./layout";
 import {
   Tool,
@@ -77,6 +77,8 @@ export function Icon({ name, size = 18 }: { name: string; size?: number }) {
       return <svg {...s}><path d="M5 5l6 7-6 7M12 5l6 7-6 7" /></svg>;
     case "collect":
       return <svg {...s}><rect x="3" y="3" width="18" height="18" rx="3" /><path d="M8 12h8M12 8v8" /></svg>;
+    case "trail":
+      return <svg {...s}><path d="M4 18c3 0 4-3 6-6s3-6 6-6" stroke="var(--trail)" strokeWidth={2.4} /><circle cx="4" cy="18" r="2" /><circle cx="18" cy="6" r="2" /></svg>;
     case "dice":
       return <svg {...s}><rect x="4" y="4" width="16" height="16" rx="3" /><circle cx="9" cy="9" r="1" fill="currentColor" /><circle cx="15" cy="15" r="1" fill="currentColor" /><circle cx="15" cy="9" r="1" fill="currentColor" /><circle cx="9" cy="15" r="1" fill="currentColor" /></svg>;
     case "stop":
@@ -492,6 +494,7 @@ function ViewItems({ close }: { close: () => void }) {
       <Item close={close} onClick={() => zoomBy(1.25)} kbd={`${MOD}+`}>Zoom in</Item>
       <Item close={close} onClick={() => zoomBy(1 / 1.25)} kbd={`${MOD}−`}>Zoom out</Item>
       <Item close={close} onClick={requestFit} kbd="F">Zoom to fit</Item>
+      <Item close={close} onClick={zoomToSelection} kbd="⇧F">Zoom to selection</Item>
       <hr />
       <Item close={close} onClick={() => useStore.setState({ showMinimap: !showMinimap })} kbd="M">{showMinimap ? "✓ " : ""}Overview map</Item>
       <Item close={close} onClick={() => useStore.setState({ snapToGrid: !snapToGrid })} kbd="G">{snapToGrid ? "✓ " : ""}Snap to grid</Item>
@@ -753,6 +756,8 @@ export function SimControls() {
   const music = useStore((s) => s.net.netClass === "music");
   const ambient = useStore((s) => isAmbient(s.net.netClass));
   const collecting = useAmbient((s) => s.collecting);
+  const showTrail = useStore((s) => s.showTrail);
+  const trailFrom = useStore((s) => s.trailFrom);
   return (
     <div className="sim-bar" role="toolbar" aria-label="Token game">
       <button className="icon" title="Back to the initial marking" aria-label="Restart" onClick={() => simGoto(0)} disabled={simIndex === 0}>
@@ -764,6 +769,10 @@ export function SimControls() {
       <button className="icon" title="Step forward (→)" aria-label="Step forward" onClick={() => simGoto(simIndex + 1)} disabled={simIndex >= sim.length - 1}>
         <Icon name="forward" />
       </button>
+      <span className="sim-step mono" aria-live="polite" title="Firings so far, and in the history ahead" data-testid="sim-step">
+        Step {simIndex}
+        {sim.length - 1 > simIndex && <span className="muted"> of {sim.length - 1}</span>}
+      </span>
       <button className="icon" title={ambient ? "Fire a random enabled step (R)" : "Fire a random enabled transition (R)"} aria-label="Fire random" onClick={() => stepRandom()}>
         <Icon name="dice" />
       </button>
@@ -787,10 +796,28 @@ export function SimControls() {
       <button className={`icon ${running ? "active" : ""}`} title={running ? "Pause (Space)" : "Run random firings (Space)"} aria-label={running ? "Pause" : "Run"} onClick={() => useStore.setState({ running: !running })} data-testid="run">
         <Icon name={running ? "pause" : "play"} />
       </button>
-      <input type="range" min={1} max={30} value={speed} title={`${speed} firings per second`} aria-label="Speed" onChange={(e) => useStore.setState({ speed: Number(e.target.value) })} onPointerUp={(e) => e.currentTarget.blur()} />
+      <label className="sim-speed" title={`${speed} firings per second when running`}>
+        <input type="range" min={1} max={30} value={speed} aria-label="Speed" onChange={(e) => useStore.setState({ speed: Number(e.target.value) })} onPointerUp={(e) => e.currentTarget.blur()} />
+        <span className="mono muted">{speed}/s</span>
+      </label>
       {music && (
         <button className={`icon ${sound ? "active" : ""}`} title={sound ? "Sound on" : "Sound off"} aria-label="Sound" onClick={() => useStore.setState({ sound: !sound })}>
           <Icon name="music" />
+        </button>
+      )}
+      <button
+        className={`icon ${showTrail ? "active" : ""}`}
+        title={showTrail ? "Hide the red trail of where the tokens went (T)" : "Show the red trail of where the tokens went (T)"}
+        aria-label="Token trail"
+        aria-pressed={showTrail}
+        onClick={() => useStore.setState({ showTrail: !showTrail })}
+        data-testid="sim-trail"
+      >
+        <Icon name="trail" />
+      </button>
+      {showTrail && simIndex > trailFrom && (
+        <button className="small" onClick={() => useStore.setState({ trailFrom: simIndex })} title="Start the trail again from the current marking" data-testid="sim-clear-trail">
+          Clear trail
         </button>
       )}
       <button className="small" onClick={adoptMarking} title="Make the current marking the net's initial marking">

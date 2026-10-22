@@ -30,7 +30,7 @@ import {
   undo,
   useStore,
 } from "./store";
-import { zoomBy } from "./Canvas";
+import { zoomBy, zoomToSelection } from "./Canvas";
 import { MenuCommand, desktop } from "./platform";
 import { propsDocked, useScreenClass, useVisualViewport } from "./responsive";
 import { ArcKind, isAmbient, isFaultTree } from "@pns/core";
@@ -79,6 +79,8 @@ export function runCommand(c: MenuCommand) {
       return zoomBy(1 / 1.25);
     case "zoom-fit":
       return requestFit();
+    case "zoom-selection":
+      return zoomToSelection();
     case "about":
       return useStore.setState({ dialog: "about" });
     case "new":
@@ -225,10 +227,11 @@ export function App() {
         if (e.key === "ArrowLeft") simGoto(s.simIndex - 1);
         else if (e.key === "ArrowRight") simGoto(s.simIndex + 1);
         else if (e.key.toLowerCase() === "r") stepRandom();
+        else if (e.key.toLowerCase() === "t") useStore.setState({ showTrail: !useStore.getState().showTrail });
         else if (e.key.toLowerCase() === "x" && isAmbient(s.net.netClass)) fireMaximalStep();
         else if (e.key === " ") (e.preventDefault(), useStore.setState({ running: !s.running }));
         else if (e.key === "Escape") stopSimulation();
-        else if (e.key.toLowerCase() === "f") requestFit();
+        else if (e.key.toLowerCase() === "f") e.shiftKey ? zoomToSelection() : requestFit();
         return;
       }
       const k = e.key.toLowerCase();
@@ -251,7 +254,7 @@ export function App() {
       else if (k === "p" && !isFaultTree(s.net.netClass)) setTool("place");
       else if (k === "t" && !isFaultTree(s.net.netClass)) setTool("transition");
       else if (k === "a") setTool("arc");
-      else if (k === "f") requestFit();
+      else if (k === "f") e.shiftKey ? zoomToSelection() : requestFit();
       else if (k === "s") startSimulation();
       else if (ARC_KEYS[e.key]) useStore.setState({ arcKind: ARC_KEYS[e.key], tool: "arc" });
       else if (e.key.startsWith("Arrow") && s.selection.length) {
@@ -317,7 +320,7 @@ export function App() {
       </div>
       <Dialogs />
       {toast && (
-        <div className={`toast ${toast.kind}`} role="status" onClick={() => useStore.setState({ toast: null })}>
+        <div className={`toast ${toast.kind}`} role="status" onClick={() => (toast.onClick ? toast.onClick() : useStore.setState({ toast: null }))}>
           {toast.text}
         </div>
       )}

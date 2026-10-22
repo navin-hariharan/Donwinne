@@ -215,9 +215,50 @@ function makeShaper(model: SimModel, mapping: UnfoldMapping | null, mode: "aggre
   return { meta, shape: (o) => pick.map((f) => f(o)) };
 }
 
+/** Upper limits on a simulation request, so that a mistyped setting fails at once instead of exhausting memory. */
+export const SIMULATION_LIMITS = {
+  points: 1_000_000,
+  runs: 10_000,
+  samplesPerLevel: 10_000,
+  /** Runs over all parameter samples together (runs × samples). */
+  totalRuns: 10_000,
+  /** Numbers kept in the result: points × series × (kept runs, fuzzy bands). */
+  outputCells: 5_000_000,
+} as const;
+
+/** Check the numeric options of a simulation; throws a SimulationError naming the first bad one. */
+function checkOptions(o: SimulationOptions) {
+  const finite = (v: number | undefined, what: string) => {
+    if (v !== undefined && !Number.isFinite(v)) throw new SimulationError(`${what} must be a finite number (got ${v})`);
+  };
+  const count = (v: number | undefined, what: string, min: number, max: number) => {
+    if (v === undefined) return;
+    finite(v, what);
+    const n = Math.round(v);
+    if (!Number.isSafeInteger(n) || n < min || n > max) throw new SimulationError(`${what} must be a whole number from ${min.toLocaleString("en")} to ${max.toLocaleString("en")} (got ${v})`);
+  };
+  finite(o.start, "The start time");
+  finite(o.end, "The end time");
+  count(o.points, "The number of output points", 2, SIMULATION_LIMITS.points);
+  count(o.runs, "The number of runs", 1, SIMULATION_LIMITS.runs);
+  count(o.samplesPerLevel, "The number of samples per level", 1, SIMULATION_LIMITS.samplesPerLevel);
+  count(o.maxSteps, "The maximum number of steps", 1, Number.MAX_SAFE_INTEGER);
+  for (const [v, what] of [
+    [o.atol, "The absolute tolerance"],
+    [o.rtol, "The relative tolerance"],
+    [o.step, "The step size"],
+  ] as const) {
+    finite(v, what);
+    if (v !== undefined && !(v > 0)) throw new SimulationError(`${what} must be positive (got ${v})`);
+  }
+  if (o.seed !== undefined) finite(o.seed, "The seed");
+  for (const a of o.alphaLevels ?? []) finite(a, "An alpha level");
+}
+
 /** The generator behind simulate/simulateAsync; yields progress fractions. */
 export function* simulateSteps(net: Net, options: SimulationOptions): Generator<number, Trace, void> {
   const t0 = Date.now();
+  checkOptions(options);
   const start = options.start ?? 0;
   const end = options.end;
   const points = Math.round(options.points ?? 101);
@@ -262,6 +303,17 @@ export function* simulateSteps(net: Net, options: SimulationOptions): Generator<
     : [];
   const totalSims = 1 + plan.reduce((s, l) => s + l.samples.length, 0);
   const totalUnits = totalSims * runsPerSample;
+  if (totalUnits > SIMULATION_LIMITS.totalRuns)
+    throw new SimulationError(
+      `This simulation needs ${totalUnits.toLocaleString("en")} runs (${runsPerSample} per parameter sample × ${totalSims} samples); the limit is ${SIMULATION_LIMITS.totalRuns.toLocaleString("en")}. Use fewer runs or samples.`,
+    );
+  const seriesCount = shaper.meta.length;
+  const copies = 1 + (options.keepRuns && !fuzzy.length ? runsPerSample : 0) + plan.length * 2;
+  const cells = points * seriesCount * copies;
+  if (cells > SIMULATION_LIMITS.outputCells)
+    throw new SimulationError(
+      `The result would hold ${cells.toLocaleString("en")} values (${points.toLocaleString("en")} points × ${seriesCount} series${copies > 1 ? ` × ${copies}` : ""}); the limit is ${SIMULATION_LIMITS.outputCells.toLocaleString("en")}. Use fewer output points${options.keepRuns ? " or do not keep every run" : ""}.`,
+    );
   let doneUnits = 0;
   let steps = 0;
   let events = 0;

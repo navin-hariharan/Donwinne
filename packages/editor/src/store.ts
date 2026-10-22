@@ -31,7 +31,7 @@ import {
   showBinding,
   timeBase,
 } from "@pns/core";
-import { snap } from "./geometry";
+import { sameButLayout, snap } from "./geometry";
 import { screenClassFor } from "./responsive";
 import { validateFaultTree } from "@pns/ft";
 import { Step, ambientErrors } from "@pns/apn";
@@ -71,6 +71,13 @@ export interface Clipboard {
 
 export type InlineField = "name" | "marking" | "inscription" | "note" | "rate";
 
+/** A file opened or saved recently; its text is kept under `key` in local storage so it can be reopened. */
+export interface RecentFile {
+  name: string;
+  key: string;
+  time: number;
+}
+
 export interface State {
   net: Net;
   filePath: string | null;
@@ -95,8 +102,16 @@ export interface State {
   running: boolean;
   speed: number; // firings per second
   sound: boolean;
+  /** Token game: draw the red trail of where the tokens went. */
+  showTrail: boolean;
+  /** Token game: the history index the trail starts after ("Clear trail" moves it to the present). */
+  trailFrom: number;
 
-  toast: { text: string; kind: "info" | "error" } | null;
+  /**
+   * The message at the bottom of the window. A click dismisses it, or, when it has an `onClick`,
+   * runs that instead and leaves it to the action to clear the toast.
+   */
+  toast: { text: string; kind: "info" | "error"; onClick?: () => void } | null;
   bindingPicker: { transitionId: string; bindings: Binding[]; x: number; y: number } | null;
   contextMenu: { x: number; y: number; world: Point; targetId: string | null } | null;
   inlineEdit: { id: string; field: InlineField } | null;
@@ -118,15 +133,22 @@ export interface State {
   highlight: string[];
   /** Fault tree events marked as failed (e.g. a cut set being inspected). */
   ftFailed: string[];
+  /** Where the mouse last was over the canvas, in world coordinates; paste puts the copy there. */
+  pointer: Point | null;
+  recentFiles: RecentFile[];
 }
 
 const compiledCache = new WeakMap<Net, CompiledNet>();
+let lastCompiled: { net: Net; cn: CompiledNet } | null = null;
 export function compiled(net: Net): CompiledNet {
   let cn = compiledCache.get(net);
   if (!cn) {
-    cn = compile(net);
+    // Moving nodes or bending arcs changes nothing the firing rule sees, so dragging in a large
+    // net reuses the last compile instead of redoing it on every pointer move.
+    cn = lastCompiled && sameButLayout(lastCompiled.net, net) ? lastCompiled.cn : compile(net);
     compiledCache.set(net, cn);
   }
+  lastCompiled = { net, cn };
   return cn;
 }
 
@@ -150,8 +172,12 @@ export function problemsOf(net: Net): Problem[] {
 
 const AUTOSAVE_KEY = "pns.autosave.v1";
 const PREFS_KEY = "pns.prefs.v1";
+const RECENT_KEY = "pns.recent.v1";
+const RECENT_MAX = 5;
+/** Larger files are not kept for the recent list, to leave room for the autosave. */
+const RECENT_MAX_CHARS = 1_000_000;
 
-type Prefs = Partial<Pick<State, "theme" | "snapToGrid" | "showMinimap" | "seenWelcome" | "sound" | "bottomHeight" | "propsWidth">>;
+type Prefs = Partial<Pick<State, "theme" | "snapToGrid" | "showMinimap" | "seenWelcome" | "sound" | "bottomHeight" | "propsWidth" | "showTrail">>;
 
 function loadPrefs(): Prefs {
   try {
@@ -173,10 +199,18 @@ function loadAutosave(): { net: Net; fileName: string | null } | null {
   return null;
 }
 
+function loadRecent(): RecentFile[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+    return Array.isArray(v) ? v.filter((r) => typeof r?.name === "string" && typeof r?.key === "string").slice(0, RECENT_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
 const restored = typeof window !== "undefined" ? loadAutosave() : null;
 const prefs: Prefs = typeof window !== "undefined" ? loadPrefs() : {};
 const smallScreenNow = () => typeof window !== "undefined" && ["phone", "short"].includes(screenClassFor(window.innerWidth, window.innerHeight));
-const smallScreenAtStart = smallScreenNow();
 const hasContent = (n: Net | undefined) => !!n && (n.places.length + n.transitions.length + (n.faultTree?.nodes.length ?? 0) > 0);
 
 export const useStore = create<State>(() => ({
@@ -199,6 +233,8 @@ export const useStore = create<State>(() => ({
   running: false,
   speed: 4,
   sound: prefs.sound ?? true,
+  showTrail: prefs.showTrail ?? true,
+  trailFrom: 0,
   toast: null,
   bindingPicker: null,
   contextMenu: null,
@@ -206,8 +242,9 @@ export const useStore = create<State>(() => ({
   dialog: hasContent(restored?.net) ? null : "new",
   theme: prefs.theme ?? "system",
   panel: "problems",
-  // Small screens start with the bottom panel folded away so the canvas gets the room.
-  bottomOpen: !smallScreenAtStart,
+  // The bottom panel starts folded to its tab strip, which still shows the problem counts, so the
+  // canvas gets the room. It opens for the token game, for problems that stop it, and on request.
+  bottomOpen: false,
   propsOpen: false,
   ftRunRequest: 0,
   bottomHeight: prefs.bottomHeight,
@@ -217,6 +254,8 @@ export const useStore = create<State>(() => ({
   seenWelcome: prefs.seenWelcome ?? false,
   highlight: [],
   ftFailed: [],
+  pointer: null,
+  recentFiles: typeof window !== "undefined" ? loadRecent() : [],
 }));
 
 const set = useStore.setState;
@@ -240,11 +279,12 @@ useStore.subscribe((s, prev) => {
     s.showMinimap !== prev.showMinimap ||
     s.seenWelcome !== prev.seenWelcome ||
     s.sound !== prev.sound ||
+    s.showTrail !== prev.showTrail ||
     s.bottomHeight !== prev.bottomHeight ||
     s.propsWidth !== prev.propsWidth
   ) {
     try {
-      const p: Prefs = { theme: s.theme, snapToGrid: s.snapToGrid, showMinimap: s.showMinimap, seenWelcome: s.seenWelcome, sound: s.sound, bottomHeight: s.bottomHeight, propsWidth: s.propsWidth };
+      const p: Prefs = { theme: s.theme, snapToGrid: s.snapToGrid, showMinimap: s.showMinimap, seenWelcome: s.seenWelcome, sound: s.sound, bottomHeight: s.bottomHeight, propsWidth: s.propsWidth, showTrail: s.showTrail };
       localStorage.setItem(PREFS_KEY, JSON.stringify(p));
     } catch {
       /* ignore */
@@ -326,6 +366,54 @@ export function selectKind(kind: "places" | "transitions" | "arcs") {
 
 export function select(ids: string[]) {
   set({ selection: ids });
+}
+
+// ---------- recent files ----------
+
+/** Put a file at the top of the recent list, keeping its text so it can be reopened. */
+export function rememberFile(name: string, text: string) {
+  if (text.length > RECENT_MAX_CHARS) return;
+  const list = get().recentFiles;
+  const key = list.find((r) => r.name === name)?.key ?? `pns.recent.file.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  try {
+    localStorage.setItem(key, text);
+  } catch {
+    return; // storage full or unavailable
+  }
+  const next = [{ name, key, time: Date.now() }, ...list.filter((r) => r.key !== key)];
+  for (const r of next.slice(RECENT_MAX)) forgetText(r.key);
+  setRecent(next.slice(0, RECENT_MAX));
+}
+
+/** The kept text of a recent file, or null if it is gone. */
+export function recentText(r: RecentFile): string | null {
+  try {
+    return localStorage.getItem(r.key);
+  } catch {
+    return null;
+  }
+}
+
+export function forgetRecent(r: RecentFile) {
+  forgetText(r.key);
+  setRecent(get().recentFiles.filter((x) => x.key !== r.key));
+}
+
+function forgetText(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+}
+
+function setRecent(recentFiles: RecentFile[]) {
+  set({ recentFiles });
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(recentFiles));
+  } catch {
+    /* ignore */
+  }
 }
 
 export function setTool(tool: Tool) {
@@ -572,7 +660,12 @@ export function addArc(source: string, target: string, points: Point[] = [], kin
   const kind = kindOverride ?? s.arcKind;
   if (kind !== "normal" && !fromPlace) return `${/^[aeiou]/.test(kind) ? "An" : "A"} ${kind} arc must go from a place to a transition`;
   if (kind === "modifier" && !arcKindsFor(net.netClass).includes("modifier")) return "Modifier arcs need a stochastic, continuous or hybrid net";
-  if (net.arcs.some((a) => a.source === source && a.target === target && a.kind === kind)) return "That arc already exists";
+  const existing = net.arcs.find((a) => a.source === source && a.target === target && a.kind === kind);
+  if (existing) {
+    // Drawing the same arc again means "change this arc": select it and edit its weight or inscription.
+    set({ selection: [existing.id], inlineEdit: { id: existing.id, field: "inscription" } });
+    return null;
+  }
   const id = newId("a");
   const defaultInscription = isColoured(net.netClass) ? defaultColouredInscription(net, fromPlace ? source : target) : kind === "reset" ? "" : "1";
   edit((n) => ({
@@ -638,6 +731,30 @@ export function updateTransition(id: string, patch: Partial<Transition>, coalesc
 export function updateArc(id: string, patch: Partial<Arc>, coalesce?: string) {
   edit((net) => {
     const arcs = net.arcs.map((a) => (a.id === id ? { ...a, ...patch } : a));
+    const needsXpt = !allowsExtendedArcs(net.netClass) && arcs.some((a) => a.kind !== "normal");
+    return { ...net, arcs, netClass: needsXpt ? "xpt" : net.netClass };
+  }, coalesce);
+}
+
+/** A change for several elements: the same fields for all, or worked out for each one. */
+export type Patch<T> = Partial<T> | ((x: T) => Partial<T>);
+const patched = <T,>(x: T, patch: Patch<T>): T => ({ ...x, ...(typeof patch === "function" ? patch(x) : patch) });
+
+/** Change several places in one undo step (the properties panel's multi-edit). */
+export function updatePlaces(ids: string[], patch: Patch<Place>, coalesce?: string) {
+  const idSet = new Set(ids);
+  edit((net) => ({ ...net, places: net.places.map((p) => (idSet.has(p.id) ? patched(p, patch) : p)) }), coalesce);
+}
+
+export function updateTransitions(ids: string[], patch: Patch<Transition>, coalesce?: string) {
+  const idSet = new Set(ids);
+  edit((net) => ({ ...net, transitions: net.transitions.map((t) => (idSet.has(t.id) ? patched(t, patch) : t)) }), coalesce);
+}
+
+export function updateArcs(ids: string[], patch: Patch<Arc>, coalesce?: string) {
+  const idSet = new Set(ids);
+  edit((net) => {
+    const arcs = net.arcs.map((a) => (idSet.has(a.id) ? patched(a, patch) : a));
     const needsXpt = !allowsExtendedArcs(net.netClass) && arcs.some((a) => a.kind !== "normal");
     return { ...net, arcs, netClass: needsXpt ? "xpt" : net.netClass };
   }, coalesce);
@@ -791,6 +908,7 @@ export function copySelection() {
   const ftEdges = (s.net.faultTree?.edges ?? []).filter((e) => ftIds.has(e.source) && ftIds.has(e.target));
   if (!places.length && !transitions.length && !notes.length && !ftNodes.length) return false;
   clipboard = { places, transitions, arcs, notes, ftNodes, ftEdges };
+  lastPasteAt = null;
   return true;
 }
 
@@ -798,46 +916,82 @@ export function cutSelection() {
   if (copySelection()) deleteSelection();
 }
 
-export function paste(offset = 40) {
+/**
+ * A readable name for a copy: `name_2`, `name_3`, ... whichever is free first. A copy of a copy
+ * (`P0_2` while `P0` exists) counts on from the original rather than growing `P0_2_2`.
+ */
+export function copyName(name: string, used: Set<string>): string {
+  if (!used.has(name)) return name;
+  const m = /^(.*)_(\d+)$/.exec(name);
+  const base = m && used.has(m[1]) ? m[1] : name;
+  let i = 2;
+  while (used.has(`${base}_${i}`)) i++;
+  return `${base}_${i}`;
+}
+
+/** Where the last paste went, so pasting again without moving the mouse cascades instead of stacking. */
+let lastPasteAt: Point | null = null;
+
+/**
+ * Paste the clipboard. The copy is centred on the mouse when it is over the canvas (`at`),
+ * otherwise it lands `offset` down and right of what was copied.
+ */
+export function paste(offset = 40, at: Point | null = get().pointer) {
   if (!clipboard) return;
   const map = new Map<string, string>();
-  const net = get().net;
-  const page = get().page ?? undefined;
-  const pnames = net.places.map((p) => p.name);
-  const tnames = net.transitions.map((t) => t.name);
+  const s = get();
+  const net = s.net;
+  const page = s.page ?? undefined;
+  const nodes: Point[] = [...clipboard.places, ...clipboard.transitions, ...clipboard.notes, ...clipboard.ftNodes];
+  let dx = offset;
+  let dy = offset;
+  if (at && nodes.length && !(lastPasteAt && lastPasteAt.x === at.x && lastPasteAt.y === at.y)) {
+    const xs = nodes.map((n) => n.x);
+    const ys = nodes.map((n) => n.y);
+    dx = snap(at.x - (Math.min(...xs) + Math.max(...xs)) / 2, s.snapToGrid);
+    dy = snap(at.y - (Math.min(...ys) + Math.max(...ys)) / 2, s.snapToGrid);
+  }
+  lastPasteAt = at;
+  const move = <T extends Point>(p: T): T => ({ ...p, x: p.x + dx, y: p.y + dy });
+  const names = new Set([...net.places, ...net.transitions].map((n) => n.name));
+  const fresh = (name: string) => {
+    const n = copyName(name, names);
+    names.add(n);
+    return n;
+  };
   const places = clipboard.places.map((p) => {
     const id = newId("p");
     map.set(p.id, id);
-    const name = p.logical || !pnames.includes(p.name) ? p.name : nextName(pnames, "P");
-    pnames.push(name);
-    return { ...p, id, name, x: p.x + offset, y: p.y + offset, parent: page };
+    // Logical (fusion) places share their marking by name, so a copy keeps it.
+    return { ...move(p), id, name: p.logical ? p.name : fresh(p.name), parent: page };
   });
   const transitions = clipboard.transitions.map((t) => {
     const id = newId("t");
     map.set(t.id, id);
-    const name = tnames.includes(t.name) ? nextName(tnames, "T") : t.name;
-    tnames.push(name);
-    return { ...t, id, name, x: t.x + offset, y: t.y + offset, parent: page };
+    return { ...move(t), id, name: fresh(t.name), parent: page };
   });
   const arcs = clipboard.arcs.map((a) => ({
     ...a,
     id: newId("a"),
     source: map.get(a.source)!,
     target: map.get(a.target)!,
-    points: a.points?.map((p) => ({ x: p.x + offset, y: p.y + offset })),
+    points: a.points?.map(move),
   }));
-  const notes = clipboard.notes.map((n) => ({ ...n, id: newId("n"), x: n.x + offset, y: n.y + offset, parent: page }));
+  const notes = clipboard.notes.map((n) => ({ ...move(n), id: newId("n"), parent: page }));
+  const ftNames = new Set((net.faultTree?.nodes ?? []).map((n) => n.name));
   const ftNodes = clipboard.ftNodes.map((n) => {
     const id = newId("f");
     map.set(n.id, id);
-    return { ...n, id, x: n.x + offset, y: n.y + offset, parent: page };
+    const name = copyName(n.name, ftNames);
+    ftNames.add(name);
+    return { ...move(n), id, name, parent: page };
   });
   const ftEdges = clipboard.ftEdges.map((e) => ({
     ...e,
     id: newId("e"),
     source: map.get(e.source)!,
     target: map.get(e.target)!,
-    points: e.points?.map((p) => ({ x: p.x + offset, y: p.y + offset })),
+    points: e.points?.map(move),
   }));
   edit((n) => ({
     ...n,
@@ -853,7 +1007,7 @@ export function paste(offset = 40) {
 }
 
 export function duplicateSelection() {
-  if (copySelection()) paste(30);
+  if (copySelection()) paste(30, null);
 }
 
 // ---------- alignment ----------
@@ -1027,6 +1181,7 @@ export function startSimulation() {
     mode: "simulate",
     sim: [{ marking: initialMarking(cn), label: "Initial marking", timed }],
     simIndex: 0,
+    trailFrom: 0,
     selection: [],
     panel: "simulation",
     // On phones the panel would hide most of the net: it stays as it was, its tab ready to open.
@@ -1099,7 +1254,7 @@ export function adoptMarking() {
   };
   set({ mode: "edit" });
   edit(() => net);
-  set({ mode: "simulate", sim: [{ marking: M, label: "Initial marking" }], simIndex: 0 });
+  set({ mode: "simulate", sim: [{ marking: M, label: "Initial marking" }], simIndex: 0, trailFrom: 0 });
   toast("Current marking saved as the initial marking");
 }
 

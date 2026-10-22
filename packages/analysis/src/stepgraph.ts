@@ -26,6 +26,11 @@ export interface StepGraphLike {
   complete?: boolean;
   /** Why the graph is incomplete, shown in the notes. */
   reason?: string;
+  /**
+   * In an incomplete graph, the states whose successors may not all be listed. When absent, every
+   * state of an incomplete graph is treated as open.
+   */
+  open?: readonly number[];
 }
 
 /**
@@ -144,6 +149,7 @@ function colouredView(net: Net, g: StepGraphLike): TransitionSystem {
     initial: g.initial,
     semantics: "step",
     complete,
+    ...(complete || !g.open ? {} : { open: g.open }),
     notes: complete ? [] : [`The step graph is incomplete${g.reason ? ` (limit: ${g.reason})` : ""}; results that need the whole graph are reported as unknown.`],
   });
 }

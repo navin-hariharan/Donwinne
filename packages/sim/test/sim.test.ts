@@ -6,6 +6,7 @@ import {
   buildModel,
   outputTimes,
   parameterize,
+  SIMULATION_LIMITS,
   reachabilityGraph,
   simulate,
   simulateAsync,
@@ -140,6 +141,30 @@ describe("continuous simulation", () => {
     expect(series(trace, "A").values[4]).toBeCloseTo(0.7158, 2);
     expect(series(trace, "C").values[4]).toBeCloseTo(0.2842, 2);
     expect(trace.stats.steps).toBeLessThan(5000);
+  });
+});
+
+describe("simulation options", () => {
+  const net = decay("stochastic");
+  it.each([
+    ["an infinite end time", { end: Infinity }, /end time must be a finite number/],
+    ["a NaN start time", { end: 5, start: NaN }, /start time must be a finite number/],
+    ["a NaN number of points", { end: 5, points: NaN }, /output points must be a finite number/],
+    ["too many points", { end: 5, points: SIMULATION_LIMITS.points + 1 }, /output points must be a whole number from 2 to 1,000,000/],
+    ["zero runs", { end: 5, runs: 0 }, /number of runs must be a whole number from 1/],
+    ["too many runs", { end: 5, runs: SIMULATION_LIMITS.runs + 1 }, /number of runs/],
+    ["a negative step", { end: 5, step: -1 }, /step size must be positive/],
+    ["an infinite step", { end: 5, step: Infinity }, /step size must be a finite number/],
+    ["a zero tolerance", { end: 5, atol: 0 }, /absolute tolerance must be positive/],
+    ["a NaN relative tolerance", { end: 5, rtol: NaN }, /relative tolerance must be a finite number/],
+    ["a zero step limit", { end: 5, maxSteps: 0 }, /maximum number of steps/],
+    ["an infinite step limit", { end: 5, maxSteps: Infinity }, /maximum number of steps must be a finite number/],
+  ])("rejects %s", (_, o, msg) => {
+    expect(() => simulate(net, o as { end: number })).toThrow(msg);
+  });
+
+  it("rejects results larger than the output budget", () => {
+    expect(() => simulate(net, { end: 5, points: 1_000_000, runs: 5, keepRuns: true, seed: 1 })).toThrow(/limit is 5,000,000/);
   });
 });
 

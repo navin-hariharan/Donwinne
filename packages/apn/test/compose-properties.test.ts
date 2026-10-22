@@ -167,6 +167,17 @@ describe("Sec. 4.4.1: behavioural properties", () => {
     expect(b.get(p1)).toEqual({ perColour: 1, total: 2 });
   });
 
+  it("Defs 10, 14, 17: a partly explored state space leaves liveness, reversibility and boundedness undecided", () => {
+    const net = fig410();
+    const g = reachabilityGraph(net, { limit: 2 });
+    expect(g.complete).toBe(false);
+    expect(isLive(net, g)).toMatchObject({ ok: false, unknown: true });
+    expect(isReversible(net, g)).toMatchObject({ ok: false, unknown: true });
+    expect(isKBounded(net, 5, g)).toMatchObject({ ok: false, unknown: true });
+    // Exceeding k in the explored part decides it.
+    expect(isKBounded(net, 0, g).unknown).toBeUndefined();
+  });
+
   it("Def. 10 and Sec. 4.3.2.2.1: the bidirectional step lets users undo the last action, so it is cyclic/reversible", () => {
     expect(isReversible(fig410())).toMatchObject({ ok: true });
   });

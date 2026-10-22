@@ -43,9 +43,9 @@ Open it with **Analyse > Reachability graph…**. The model must have no errors 
 | max tokens in one place | The largest number of tokens seen in a single place (shown with ≥ when the exploration stopped early). |
 | deadlock-free | Yes, No, or ? when the exploration stopped early before finding a dead state. |
 
-Below the figures, a table lists the first 300 states: the state number (M0 is the initial marking), the marking of each place, and a **Next** column with up to six successors written as `transition → state`. Dead states are marked.
+Below the figures, **Graph** and **Table** switch between two views. Graphs of up to 150 states open as a drawing, the way Snoopy shows them: one box per state with its name (M0 is the initial marking, at the top) and the places that hold tokens (`busy:2` means two tokens in *busy*), and one arrow per firing labelled with the transition. Dead states have a red border. Larger graphs open as the table, which lists the first 300 states: the state number, the marking of each place, and a **Next** column with up to six successors written as `transition → state`. Dead states are marked there too.
 
-**Click a state** to see how it is reached: the dialog closes and the token game starts with the shortest firing sequence from M0 to that state already in its history, so you can step through it with ← and →.
+**Click a state** (a box in the graph or a row in the table) to see how it is reached: the dialog closes and the token game starts with the shortest firing sequence from M0 to that state already in its history, so you can step through it with ← and →.
 
 ## Net properties and invariants
 

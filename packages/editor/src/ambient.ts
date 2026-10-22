@@ -323,7 +323,7 @@ export function replaySteps(steps: Step[], then?: Step): number {
     const U = steps[i - 1];
     sim.push({ marking: r.markings[i], label: showStep(net, U), transitionId: U[0]?.transition, transitionIds: U.map((x) => x.transition), step: U });
   }
-  useStore.setState({ sim, simIndex: sim.length - 1, panel: "simulation" });
+  useStore.setState({ sim, simIndex: sim.length - 1, trailFrom: 0, panel: "simulation" });
   if (!r.ok) toast(`Step ${r.failedAt + 1} of the sequence is not enabled in this net`, "error");
   if (then?.length) setA({ pending: then.filter((x) => net.transitions.some((t) => t.id === x.transition)) });
   return r.markings.length - 1;

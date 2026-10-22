@@ -41,8 +41,13 @@ export interface CrgOptions {
 export interface Crg extends StepTransitionSystem<Marking> {
   /** Canonical key of each state's marking (markingKey). */
   keys: string[];
-  /** States without enabled steps (dead states). */
+  /** States known to have no enabled step (dead states). A state that was not fully explored is never listed here. */
   deadlocks: number[];
+  /**
+   * States whose successors may not all be listed, because a limit or the signal stopped the
+   * construction before or while they were expanded. Empty when the graph is complete.
+   */
+  open: number[];
   /** False when a limit or the abort signal stopped the construction early. */
   complete: boolean;
   /** Why the graph is incomplete: a limit, the step enumeration limit, or the signal. */
@@ -64,7 +69,7 @@ class Builder {
     const errs = ambientErrors(this.an);
     if (errs.length) throw new Error(errs[0].message);
     const M0 = opts.initial ?? ambientInitialMarking(this.an);
-    this.crg = { states: [M0], edges: [], initial: 0, keys: [markingKey(M0)], deadlocks: [], complete: true };
+    this.crg = { states: [M0], edges: [], initial: 0, keys: [markingKey(M0)], deadlocks: [], open: [], complete: true };
     this.index.set(this.crg.keys[0], 0);
     this.maxStates = opts.maxStates ?? 10_000;
     this.maxEdges = opts.maxEdges ?? 100_000;
@@ -72,6 +77,11 @@ class Builder {
   stop(reason: Crg["reason"]) {
     this.crg.complete = false;
     this.crg.reason ??= reason;
+  }
+  /** Mark every state not yet expanded as open; call once the construction has ended. */
+  finish(): Crg {
+    if (!this.crg.complete) for (let s = this.next; s < this.crg.states.length; s++) this.crg.open.push(s);
+    return this.crg;
   }
   /** Expand one state; false when done or stopped. */
   step(): boolean {
@@ -89,8 +99,10 @@ class Builder {
       maxStepSize: opts.maxStepSize,
       capacityRule: opts.capacityRule,
     });
+    let partial = r.truncated;
     if (r.truncated) this.stop("steps");
-    if (!r.steps.length) crg.deadlocks.push(i);
+    // Only a fully enumerated state without steps is dead; a cut-off enumeration proves nothing.
+    else if (!r.steps.length) crg.deadlocks.push(i);
     for (const U of r.steps) {
       const M2 = fireStep(this.an, M, U, { capacityRule: opts.capacityRule });
       const key = markingKey(M2);
@@ -98,6 +110,7 @@ class Builder {
       if (to === undefined) {
         if (crg.states.length >= this.maxStates) {
           this.stop("states");
+          partial = true;
           continue;
         }
         to = crg.states.length;
@@ -107,10 +120,12 @@ class Builder {
       }
       if (crg.edges.length >= this.maxEdges) {
         this.stop("edges");
+        crg.open.push(i);
         return false;
       }
       crg.edges.push({ from: i, to, step: U });
     }
+    if (partial) crg.open.push(i);
     return true;
   }
 }
@@ -124,7 +139,7 @@ export function concurrentReachabilityGraph(net: Net | AmbientNet, opts: CrgOpti
   const b = new Builder(net, opts);
   let n = 0;
   while (b.step()) if (opts.onProgress && ++n % 100 === 0) opts.onProgress(b.crg.states.length, b.crg.edges.length);
-  return b.crg;
+  return b.finish();
 }
 
 /**
@@ -141,7 +156,7 @@ export async function concurrentReachabilityGraphAsync(net: Net | AmbientNet, op
       await new Promise((r) => setTimeout(r, 0));
     }
   }
-  return b.crg;
+  return b.finish();
 }
 
 /** Short name of the CRG: crg(net) is concurrentReachabilityGraph(net). */

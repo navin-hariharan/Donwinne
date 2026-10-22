@@ -12,5 +12,5 @@ export default defineConfig({
       "@pns/sim": r("./packages/sim/src/index.ts"),
     },
   },
-  test: { include: ["packages/*/test/**/*.test.ts"], environment: "node" },
+  test: { include: ["packages/*/test/**/*.test.ts"], environment: "node", benchmark: { include: ["bench/**/*.bench.ts"] } },
 });

@@ -1,7 +1,7 @@
-import React from "react";
-import type { Arc, CompiledNet, FTNode, Marking, Net, Note, Place, Point, Transition } from "@pns/core";
+import React, { useMemo, useRef } from "react";
+import type { Arc, CompiledNet, FTNode, Marking, Net, NetClass, Note, Place, Point, Transition } from "@pns/core";
 import { isColoured, showTokens, timeBase } from "@pns/core";
-import { PLACE_R, arcPath, ftEdgePath, ftSize, noteSize, polylineMid, transSize } from "./geometry";
+import { Box, NodeShape, PLACE_R, arcPathBetween, ftEdgePath, ftSize, nearBox, noteSize, parallelOffset, polylineMid, sameButLayout, shapeOf, shortName, transSize } from "./geometry";
 
 export interface Palette {
   ink: string;
@@ -17,6 +17,8 @@ export interface Palette {
   logicalFill: string;
   noteFill: string;
   highlight: string;
+  /** The token trail of the token game, and the places where tokens are stuck in a deadlock. */
+  trail: string;
   /** Background behind the drawing: label halos use it so arcs never cut through text. */
   canvas: string;
 }
@@ -36,6 +38,7 @@ export const CSS_PALETTE: Palette = {
   logicalFill: "var(--logical-fill)",
   noteFill: "var(--note-fill)",
   highlight: "var(--highlight)",
+  trail: "var(--trail)",
   canvas: "var(--canvas)",
 };
 
@@ -54,6 +57,7 @@ export const EXPORT_PALETTE: Palette = {
   logicalFill: "#e5e7eb",
   noteFill: "#fef9c3",
   highlight: "#f59e0b",
+  trail: "#dc2626",
   canvas: "#ffffff",
 };
 
@@ -78,6 +82,21 @@ interface Props {
   editing?: string | null;
   /** Fault tree: ids of failed events (from analysis or a cut set). */
   failed?: Set<string>;
+  /** Token game: elements the tokens went through, with their strength (0..1). */
+  trail?: Map<string, number>;
+  /** Token game in a deadlock: the places whose tokens can no longer move. */
+  stuck?: Set<string>;
+  /**
+   * Canvas only: labels with a font size below this are left out (see labelCutoff), except on the selected
+   * and hovered elements. Exports leave it unset and draw every label.
+   */
+  labelMin?: number;
+  /** The element under the pointer, which keeps its labels whatever labelMin says. */
+  hover?: string | null;
+  /** Canvas only: cut long names short; the full name is in a tooltip. */
+  shortNames?: boolean;
+  /** Canvas only: draw only what lies in this part of the drawing (see cullBox). */
+  viewport?: Box;
 }
 
 const TOKEN_DOTS: Record<number, [number, number][]> = {
@@ -108,7 +127,7 @@ const labelStyle = (palette: Palette, size = 12): React.CSSProperties => ({
   strokeLinejoin: "round",
 });
 
-function NameLabel({ id, x, y, text, palette, interactive, hidden, anchor = "middle" }: {
+function NameLabel({ id, x, y, text, palette, interactive, hidden, short, anchor = "middle" }: {
   id: string;
   x: number;
   y: number;
@@ -116,18 +135,25 @@ function NameLabel({ id, x, y, text, palette, interactive, hidden, anchor = "mid
   palette: Palette;
   interactive?: boolean;
   hidden?: boolean;
+  short?: boolean;
   anchor?: "middle" | "start" | "end";
 }) {
   if (hidden || !text) return null;
+  const shown = short ? shortName(text) : text;
   return (
     <text x={x} y={y} textAnchor={anchor} data-label={interactive ? id : undefined} style={{ ...labelStyle(palette), cursor: interactive ? "move" : undefined }}>
-      {text}
+      {shown !== text && <title>{text}</title>}
+      {shown}
     </text>
   );
 }
 
-function PlaceView({ p, tokensText, count, amount, palette, selected, error, interactive, coloured, ghost, highlight, editing }: {
+const PlaceView = React.memo(function PlaceView({ p, tokensText, count, amount, palette, selected, error, interactive, coloured, ghost, highlight, editing, trail, stuck, labelMin = 0, shortNames }: {
   p: Place;
+  labelMin?: number;
+  shortNames?: boolean;
+  trail?: number;
+  stuck?: boolean;
   tokensText: string;
   count: number;
   amount: number | null;
@@ -152,6 +178,12 @@ function PlaceView({ p, tokensText, count, amount, palette, selected, error, int
     >
       {interactive && <circle cx={p.x} cy={p.y} r={PLACE_R} className="hit-pad" />}
       {highlight && <circle cx={p.x} cy={p.y} r={PLACE_R + 7} style={{ fill: palette.highlight, fillOpacity: 0.25, stroke: palette.highlight, strokeWidth: 2 }} />}
+      {stuck && (
+        <circle cx={p.x} cy={p.y} r={PLACE_R + 8} className="trail-stuck" style={{ fill: palette.trail, fillOpacity: 0.12, stroke: palette.trail, strokeWidth: 2.5 }}>
+          <title>Deadlock: the tokens here can no longer move</title>
+        </circle>
+      )}
+      {trail !== undefined && <circle cx={p.x} cy={p.y} r={PLACE_R + 3.5} style={{ fill: "none", stroke: palette.trail, strokeWidth: 3, strokeOpacity: trail }} />}
       {p.coarse && <circle cx={p.x + 4} cy={p.y + 4} r={PLACE_R} style={{ fill: palette.nodeFill, stroke, strokeWidth: 1.2 }} />}
       <circle
         cx={p.x}
@@ -195,39 +227,42 @@ function PlaceView({ p, tokensText, count, amount, palette, selected, error, int
           ⋯
         </text>
       )}
-      <NameLabel id={p.id} x={p.x + lo.x} y={p.y + PLACE_R + 15 + lo.y} text={p.name} palette={palette} interactive={interactive && !ghost} hidden={editing} />
+      <NameLabel id={p.id} x={p.x + lo.x} y={p.y + PLACE_R + 15 + lo.y} text={p.name} palette={palette} interactive={interactive && !ghost} hidden={editing || 12 < labelMin} short={shortNames} />
       {coloured && tokensText && (
         <text x={p.x + PLACE_R + 4} y={p.y - PLACE_R + 2} style={{ ...labelStyle(palette, 11), fill: palette.selected }}>
           <title>{tokensText}</title>
           {truncate(tokensText, 36)}
         </text>
       )}
-      {coloured && p.colourSet && p.colourSet !== "Dot" && (
+      {coloured && p.colourSet && p.colourSet !== "Dot" && 10.5 >= labelMin && (
         <text x={p.x - PLACE_R - 3} y={p.y - PLACE_R + 2} textAnchor="end" style={{ ...labelStyle(palette, 10.5), fill: palette.muted }}>
           {p.colourSet}
         </text>
       )}
-      {p.capacity ? (
+      {p.capacity && 10.5 >= labelMin ? (
         <text x={p.x + PLACE_R + 3} y={p.y + PLACE_R + 2} style={{ ...labelStyle(palette, 10.5), fill: palette.muted }}>
           ≤{p.capacity}
         </text>
       ) : null}
     </g>
   );
-}
+});
 
-function transitionSubLabel(net: Net, t: Transition): string {
+function transitionSubLabel(netClass: NetClass, t: Transition): string {
   const parts: string[] = [];
   if (t.guard?.trim()) parts.push(`[${truncate(t.guard.trim(), 30)}]`);
-  if (net.netClass === "timed" && t.interval) parts.push(`[${t.interval[0]}, ${t.interval[1]}]`);
-  if (timeBase(net.netClass) && t.rate?.trim() && t.kind !== "immediate") parts.push(truncate(t.rate.trim(), 26));
+  if (netClass === "timed" && t.interval) parts.push(`[${t.interval[0]}, ${t.interval[1]}]`);
+  if (timeBase(netClass) && t.rate?.trim() && t.kind !== "immediate") parts.push(truncate(t.rate.trim(), 26));
   if (t.kind === "immediate" && t.rate?.trim() && t.rate.trim() !== "1") parts.push(`w=${truncate(t.rate.trim(), 16)}`);
-  if (net.netClass === "music" && t.sound?.note) parts.push(`♪ ${t.sound.note}`);
+  if (netClass === "music" && t.sound?.note) parts.push(`♪ ${t.sound.note}`);
   return parts.join("  ");
 }
 
-function TransitionView({ net, t, palette, selected, enabled, error, interactive, fired, ghost, highlight, editing }: {
-  net: Net;
+const TransitionView = React.memo(function TransitionView({ netClass, t, palette, selected, enabled, error, interactive, fired, ghost, highlight, editing, trail, labelMin = 0, shortNames }: {
+  trail?: number;
+  netClass: NetClass;
+  labelMin?: number;
+  shortNames?: boolean;
   t: Transition;
   palette: Palette;
   selected: boolean;
@@ -244,7 +279,7 @@ function TransitionView({ net, t, palette, selected, enabled, error, interactive
   const kindFill = t.kind === "immediate" || t.kind === "deterministic" ? palette.nodeStroke : t.kind === "scheduled" ? palette.muted : null;
   const fill = enabled ? palette.enabledFill : t.color ?? kindFill ?? palette.nodeFill;
   const lo = t.labelOffset ?? { x: 0, y: 0 };
-  const sub = transitionSubLabel(net, t);
+  const sub = 10.5 >= labelMin ? transitionSubLabel(netClass, t) : "";
   return (
     <g
       data-id={interactive ? t.id : undefined}
@@ -253,6 +288,7 @@ function TransitionView({ net, t, palette, selected, enabled, error, interactive
     >
       {interactive && <rect x={t.x - w / 2} y={t.y - h / 2} width={w} height={h} className="hit-pad" />}
       {highlight && <rect x={t.x - w / 2 - 8} y={t.y - h / 2 - 8} width={w + 16} height={h + 16} rx={4} style={{ fill: palette.highlight, fillOpacity: 0.25, stroke: palette.highlight, strokeWidth: 2 }} />}
+      {trail !== undefined && <rect x={t.x - w / 2 - 3.5} y={t.y - h / 2 - 3.5} width={w + 7} height={h + 7} rx={3} style={{ fill: "none", stroke: palette.trail, strokeWidth: 3, strokeOpacity: trail }} />}
       {enabled && interactive && <rect x={t.x - w / 2 - 5} y={t.y - h / 2 - 5} width={w + 10} height={h + 10} rx={4} style={{ fill: "none", stroke: palette.enabled, strokeOpacity: 0.35, strokeWidth: 3 }} />}
       {t.coarse && <rect x={t.x - w / 2 + 4} y={t.y - h / 2 + 4} width={w} height={h} rx={1.5} style={{ fill: palette.nodeFill, stroke, strokeWidth: 1.2 }} />}
       <rect
@@ -274,7 +310,7 @@ function TransitionView({ net, t, palette, selected, enabled, error, interactive
           <title>Fired last</title>
         </rect>
       )}
-      <NameLabel id={t.id} x={t.x + lo.x} y={t.y - h / 2 - 7 + lo.y} text={t.name} palette={palette} interactive={interactive && !ghost} hidden={editing} />
+      <NameLabel id={t.id} x={t.x + lo.x} y={t.y - h / 2 - 7 + lo.y} text={t.name} palette={palette} interactive={interactive && !ghost} hidden={editing || 12 < labelMin} short={shortNames} />
       {sub && (
         <text x={t.x} y={t.y + h / 2 + 14} textAnchor="middle" style={{ ...labelStyle(palette, 10.5), fill: palette.muted }}>
           {sub}
@@ -282,7 +318,7 @@ function TransitionView({ net, t, palette, selected, enabled, error, interactive
       )}
     </g>
   );
-}
+});
 
 function head(kind: Arc["kind"], tip: Point, angle: number, color: string, bg: string): React.ReactNode {
   const ca = Math.cos(angle);
@@ -312,8 +348,16 @@ function head(kind: Arc["kind"], tip: Point, angle: number, color: string, bg: s
 /** Length to trim off the line end so it meets the arrowhead cleanly. */
 const HEAD_TRIM: Record<Arc["kind"], number> = { normal: 9, reset: 16, read: 8, inhibitor: 10, equal: 11, modifier: 0 };
 
-function ArcView({ net, a, palette, selected, error, interactive, coloured, highlight, freestyle, blocks }: {
-  net: Net;
+// Arcs get their end nodes rather than the whole net, so an edit elsewhere doesn't redraw every arc.
+const ArcView = React.memo(function ArcView({ src, srcKind, tgt, tgtKind, bulge, a, palette, selected, error, interactive, coloured, highlight, freestyle, blocks, trail, labelMin = 0 }: {
+  trail?: number;
+  src: NodeShape["node"];
+  srcKind: NodeShape["kind"];
+  tgt: NodeShape["node"];
+  tgtKind: NodeShape["kind"];
+  /** Sideways offset of parallel arcs (see parallelOffset). */
+  bulge: number;
+  labelMin?: number;
   a: Arc;
   palette: Palette;
   selected: boolean;
@@ -324,7 +368,7 @@ function ArcView({ net, a, palette, selected, error, interactive, coloured, high
   freestyle: boolean;
   blocks?: string[];
 }) {
-  const pts = arcPath(net, a);
+  const pts = arcPathBetween({ kind: srcKind, node: src } as NodeShape, { kind: tgtKind, node: tgt } as NodeShape, a.points, bulge);
   if (!pts) return null;
   const n = pts.length;
   const tip = pts[n - 1];
@@ -337,7 +381,7 @@ function ArcView({ net, a, palette, selected, error, interactive, coloured, high
   const d = [...pts.slice(0, -1), end].map((p, i) => `${i ? "L" : "M"}${p.x},${p.y}`).join(" ");
   const color = selected ? palette.selected : error || blocks ? palette.error : a.color ?? palette.nodeStroke;
   const label = a.inscription.trim();
-  const showLabel = label && a.kind !== "modifier" && !(!coloured && label === "1");
+  const showLabel = label && a.kind !== "modifier" && !(!coloured && label === "1") && 11.5 >= labelMin;
   const mid = polylineMid(pts);
   // Push the label off the line far enough that its box clears it, whatever the arc's angle.
   const shown = truncate(label, 40);
@@ -350,6 +394,7 @@ function ArcView({ net, a, palette, selected, error, interactive, coloured, high
     <g data-id={interactive ? a.id : undefined} data-kind="arc" style={{ cursor: interactive ? "pointer" : undefined }}>
       {interactive && <path d={pts.map((p, i) => `${i ? "L" : "M"}${p.x},${p.y}`).join(" ")} className="arc-hit" />}
       {highlight && <path d={d} style={{ fill: "none", stroke: palette.highlight, strokeOpacity: 0.5, strokeWidth: 7 }} />}
+      {trail !== undefined && <path d={pts.map((p, i) => `${i ? "L" : "M"}${p.x},${p.y}`).join(" ")} style={{ fill: "none", stroke: palette.trail, strokeOpacity: trail * 0.75, strokeWidth: 4.5, strokeLinecap: "round" }} />}
       <path d={d} style={{ fill: "none", stroke: color, strokeWidth: selected ? 2.2 : 1.4, strokeDasharray: a.kind === "modifier" ? "6 4" : undefined }} />
       {blocks && <path d={d} style={{ fill: "none", stroke: palette.error, strokeOpacity: 0.22, strokeWidth: 7 }} />}
       {freestyle ? null : head(a.kind, tip, angle, color, palette.nodeFill)}
@@ -370,9 +415,9 @@ function ArcView({ net, a, palette, selected, error, interactive, coloured, high
         ))}
     </g>
   );
-}
+});
 
-function NoteView({ n, palette, selected, interactive, editing, highlight }: { n: Note; palette: Palette; selected: boolean; interactive?: boolean; editing: boolean; highlight: boolean }) {
+const NoteView = React.memo(function NoteView({ n, palette, selected, interactive, editing, highlight }: { n: Note; palette: Palette; selected: boolean; interactive?: boolean; editing: boolean; highlight: boolean }) {
   const { w, h } = noteSize(n);
   const lines = n.text.split("\n");
   return (
@@ -393,7 +438,7 @@ function NoteView({ n, palette, selected, interactive, editing, highlight }: { n
         ))}
     </g>
   );
-}
+});
 
 // ---------- fault trees ----------
 
@@ -435,8 +480,10 @@ const GATE_TEXT: Partial<Record<FTNode["type"], string>> = {
   fdep: "FD",
 };
 
-function FTNodeView({ n, inputs, palette, selected, interactive, editing, failed, highlight }: {
+const FTNodeView = React.memo(function FTNodeView({ n, inputs, palette, selected, interactive, editing, failed, highlight, labelMin = 0, shortNames }: {
   n: FTNode;
+  labelMin?: number;
+  shortNames?: boolean;
   inputs: number;
   palette: Palette;
   selected: boolean;
@@ -489,24 +536,29 @@ function FTNodeView({ n, inputs, palette, selected, interactive, editing, failed
       {shape}
       {!editing &&
         (labelInside ? (
-          <text x={n.x} y={n.y + 4} textAnchor="middle" style={{ fill: palette.ink, fontSize: 12, fontWeight: 600, fontFamily: palette.font }}>
-            {truncate(n.name, 14)}
-          </text>
+          12 >= labelMin && (
+            <text x={n.x} y={n.y + 4} textAnchor="middle" style={{ fill: palette.ink, fontSize: 12, fontWeight: 600, fontFamily: palette.font }}>
+              {truncate(n.name, 14)}
+            </text>
+          )
         ) : (
-          <text x={n.x} y={labelY} textAnchor="middle" style={labelStyle(palette, 11.5)}>
-            {n.name}
-          </text>
+          11.5 >= labelMin && (
+            <text x={n.x} y={labelY} textAnchor="middle" style={labelStyle(palette, 11.5)}>
+              {shortNames && shortName(n.name) !== n.name && <title>{n.name}</title>}
+              {shortNames ? shortName(n.name) : n.name}
+            </text>
+          )
         ))}
-      {n.type === "basic" && (n.probability || n.failureRate) && (
+      {n.type === "basic" && (n.probability || n.failureRate) && 10 >= labelMin && (
         <text x={n.x} y={n.y + h / 2 + 28} textAnchor="middle" style={{ ...labelStyle(palette, 10), fill: palette.muted }}>
           {n.probability ? `p=${n.probability}` : `λ=${n.failureRate}`}
         </text>
       )}
     </g>
   );
-}
+});
 
-export function FaultTreeDrawing({ net, palette, selection, interactive, editing, failed, highlight }: {
+export const FaultTreeDrawing = React.memo(function FaultTreeDrawing({ net, palette, selection, interactive, editing, failed, highlight, labelMin = 0, hover, shortNames, viewport }: {
   net: Net;
   palette: Palette;
   selection?: Set<string>;
@@ -514,12 +566,18 @@ export function FaultTreeDrawing({ net, palette, selection, interactive, editing
   editing?: string | null;
   failed?: Set<string>;
   highlight?: Set<string>;
+  labelMin?: number;
+  hover?: string | null;
+  shortNames?: boolean;
+  viewport?: Box;
 }) {
   const ft = net.faultTree;
+  const { visible, inputs } = useMemo(() => {
+    const inputs = new Map<string, number>();
+    for (const e of ft?.edges ?? []) inputs.set(e.target, (inputs.get(e.target) ?? 0) + 1);
+    return { visible: new Set(ft?.nodes.map((n) => n.id)), inputs };
+  }, [ft]);
   if (!ft) return null;
-  const visible = new Set(ft.nodes.map((n) => n.id));
-  const inputs = new Map<string, number>();
-  for (const e of ft.edges) inputs.set(e.target, (inputs.get(e.target) ?? 0) + 1);
   return (
     <g>
       {ft.edges
@@ -536,64 +594,121 @@ export function FaultTreeDrawing({ net, palette, selection, interactive, editing
             </g>
           );
         })}
-      {ft.nodes.map((n) => (
-        <FTNodeView
-          key={n.id}
-          n={n}
-          inputs={inputs.get(n.id) ?? 0}
-          palette={palette}
-          selected={!!selection?.has(n.id)}
-          interactive={interactive}
-          editing={editing === n.id}
-          failed={!!failed?.has(n.id)}
-          highlight={!!highlight?.has(n.id)}
-        />
-      ))}
+      {ft.nodes.map((n) =>
+        viewport && !nearBox(viewport, n.x, n.y, 120) ? null : (
+          <FTNodeView
+            key={n.id}
+            n={n}
+            inputs={inputs.get(n.id) ?? 0}
+            palette={palette}
+            selected={!!selection?.has(n.id)}
+            interactive={interactive}
+            editing={editing === n.id}
+            failed={!!failed?.has(n.id)}
+            highlight={!!highlight?.has(n.id)}
+            labelMin={labelMin && !selection?.has(n.id) && hover !== n.id ? labelMin : 0}
+            shortNames={shortNames}
+          />
+        ),
+      )}
     </g>
   );
-}
+});
 
 // ---------- whole net ----------
 
-export function NetDrawing({ net, cn, palette, marking, selection, enabled, errorIds, interactive, lastFired, blocking, highlight, ghosts, editing, failed }: Props) {
-  const sel = selection ?? new Set<string>();
-  const errs = errorIds ?? new Set<string>();
-  const hl = highlight ?? new Set<string>();
-  const gh = ghosts ?? new Set<string>();
-  const slotOf = new Map(cn.places.map((p) => [p.id, p.slot]));
+/**
+ * The net, or the earlier version of it this returned before if the two differ only in layout (see sameButLayout).
+ * Compiling and checking it then hits the caches, so dragging nodes around a big net doesn't recompile it at every step.
+ */
+export function useLayoutStableNet(net: Net): Net {
+  const last = useRef(net);
+  const stable = useMemo(() => (sameButLayout(last.current, net) ? last.current : net), [net]);
+  last.current = stable;
+  return stable;
+}
+
+const NONE: Set<string> = new Set();
+
+/** Whether an arc between these nodes, through these bend points, may reach into the box. */
+function arcNearBox(b: Box, s: Point, t: Point, points: Point[] | undefined, pad: number): boolean {
+  let x0 = Math.min(s.x, t.x);
+  let x1 = Math.max(s.x, t.x);
+  let y0 = Math.min(s.y, t.y);
+  let y1 = Math.max(s.y, t.y);
+  for (const q of points ?? []) {
+    x0 = Math.min(x0, q.x);
+    x1 = Math.max(x1, q.x);
+    y0 = Math.min(y0, q.y);
+    y1 = Math.max(y1, q.y);
+  }
+  return x1 + pad >= b.x && x0 - pad <= b.x + b.w && y1 + pad >= b.y && y0 - pad <= b.y + b.h;
+}
+
+// Memoised, as are the element views below: on a big net a re-render that changes nothing must stay cheap.
+export const NetDrawing = React.memo(function NetDrawing({ net, cn, palette, marking, selection, enabled, errorIds, interactive, lastFired, blocking, highlight, ghosts, editing, failed, trail, stuck, labelMin = 0, hover, shortNames, viewport }: Props) {
+  const sel = selection ?? NONE;
+  const errs = errorIds ?? NONE;
+  const hl = highlight ?? NONE;
+  const gh = ghosts ?? NONE;
+  const slotOf = useMemo(() => new Map(cn.places.map((p) => [p.id, p.slot])), [cn]);
   const coloured = isColoured(net.netClass);
   const freestyle = net.netClass === "freestyle";
   const realId = (id: string) => (id.startsWith("ghost:") ? id.slice(6) : id);
+  // Selected and hovered elements keep all their labels.
+  const lod = (id: string) => (labelMin && !sel.has(id) && hover !== id ? labelMin : 0);
+  // Room around a node for its labels, when deciding whether it is in view.
+  const reach = (n: { labelOffset?: Point }) => 90 + Math.abs(n.labelOffset?.x ?? 0) + Math.abs(n.labelOffset?.y ?? 0);
   return (
     <g>
       <g>
-        {(net.notes ?? []).map((n) => (
-          <NoteView key={n.id} n={n} palette={palette} selected={sel.has(n.id)} interactive={interactive} editing={editing === n.id} highlight={hl.has(n.id)} />
-        ))}
+        {(net.notes ?? []).map((n) => {
+          if (viewport) {
+            const { w, h } = noteSize(n);
+            if (!nearBox(viewport, n.x + w / 2, n.y + h / 2, Math.max(w, h) / 2)) return null;
+          }
+          return <NoteView key={n.id} n={n} palette={palette} selected={sel.has(n.id)} interactive={interactive} editing={editing === n.id} highlight={hl.has(n.id)} />;
+        })}
       </g>
-      <FaultTreeDrawing net={net} palette={palette} selection={sel} interactive={interactive} editing={editing} failed={failed} highlight={hl} />
+      <FaultTreeDrawing net={net} palette={palette} selection={sel} interactive={interactive} editing={editing} failed={failed} highlight={hl} labelMin={labelMin} hover={hover} shortNames={shortNames} viewport={viewport} />
       <g>
-        {net.arcs.map((a) => (
-          <ArcView
-            key={a.id}
-            net={net}
-            a={a}
-            palette={palette}
-            selected={sel.has(a.id)}
-            error={errs.has(a.id)}
-            interactive={interactive}
-            coloured={coloured}
-            highlight={hl.has(a.id)}
-            freestyle={freestyle}
-            blocks={blocking?.get(a.id)}
-          />
-        ))}
+        {net.arcs.map((a) => {
+          const s = shapeOf(net, a.source);
+          const t = shapeOf(net, a.target);
+          if (!s || !t) return null;
+          const off = parallelOffset(net, a);
+          if (viewport && !arcNearBox(viewport, s.node, t.node, a.points, 80 + Math.abs(off))) return null;
+          return (
+            <ArcView
+              key={a.id}
+              src={s.node}
+              srcKind={s.kind}
+              tgt={t.node}
+              tgtKind={t.kind}
+              bulge={off}
+              a={a}
+              palette={palette}
+              selected={sel.has(a.id)}
+              error={errs.has(a.id)}
+              interactive={interactive}
+              coloured={coloured}
+              highlight={hl.has(a.id)}
+              freestyle={freestyle}
+              blocks={blocking?.get(a.id)}
+              trail={trail?.get(realId(a.id))}
+              labelMin={lod(a.id)}
+            />
+          );
+        })}
       </g>
       <g>
-        {net.transitions.map((t) => (
+        {net.transitions.map((t) =>
+          viewport && !nearBox(viewport, t.x, t.y, reach(t)) ? null : (
           <TransitionView
             key={t.id}
-            net={net}
+            netClass={net.netClass}
+            labelMin={lod(t.id)}
+            shortNames={shortNames}
             t={t}
             palette={palette}
             selected={sel.has(t.id)}
@@ -604,11 +719,14 @@ export function NetDrawing({ net, cn, palette, marking, selection, enabled, erro
             ghost={gh.has(t.id)}
             highlight={hl.has(t.id)}
             editing={editing === t.id}
+            trail={trail?.get(realId(t.id))}
           />
-        ))}
+          ),
+        )}
       </g>
       <g>
         {net.places.map((p) => {
+          if (viewport && !nearBox(viewport, p.x, p.y, reach(p))) return null;
           let count = 0;
           let amount: number | null = null;
           let text = "";
@@ -641,10 +759,14 @@ export function NetDrawing({ net, cn, palette, marking, selection, enabled, erro
               ghost={gh.has(p.id)}
               highlight={hl.has(p.id)}
               editing={editing === p.id}
+              trail={trail?.get(realId(p.id))}
+              stuck={!!stuck?.has(realId(p.id))}
+              labelMin={lod(p.id)}
+              shortNames={shortNames}
             />
           );
         })}
       </g>
     </g>
   );
-}
+});

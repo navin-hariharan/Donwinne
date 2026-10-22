@@ -1,5 +1,7 @@
 import { useStore } from "@pns/editor";
 
+const UPDATE_TEXT = "A new version of Donwinne is ready. Click here to reload.";
+
 /**
  * Registers the service worker that keeps the app available offline. Only for the built web app
  * served over http(s): not in development and not in the desktop app, which loads from disk.
@@ -12,21 +14,34 @@ export function registerServiceWorker() {
     navigator.serviceWorker
       .register("./sw.js")
       .then((reg) => {
+        let offered = false;
+        const reload = () => {
+          // Cancelling keeps the offer on screen, so the user can accept it later.
+          if (useStore.getState().dirty && !window.confirm("Reload now? Unsaved changes are kept in this browser, but not in your file.")) return;
+          offered = false;
+          useStore.setState({ toast: null });
+          const waiting = reg.waiting;
+          if (waiting) {
+            switching = true;
+            waiting.postMessage("skip-waiting");
+          } else {
+            // The new version already took over (from another tab, say): just load it.
+            location.reload();
+          }
+        };
+        const offer = () => {
+          offered = true;
+          useStore.setState({ toast: { text: UPDATE_TEXT, kind: "info", onClick: reload } });
+        };
+        // Another message may replace or clear the offer; bring it back until the user accepts it.
+        useStore.subscribe((s) => {
+          if (offered && !s.toast) offer();
+        });
         // A new version was installed while this one is open: offer to switch.
         reg.addEventListener("updatefound", () => {
           const next = reg.installing;
           next?.addEventListener("statechange", () => {
-            if (next.state === "installed" && navigator.serviceWorker.controller) {
-              useStore.setState({ toast: { text: "A new version of Donwinne is ready. Click here to reload.", kind: "info" } });
-              const reload = () => {
-                window.removeEventListener("click", onToast, true);
-                if (useStore.getState().dirty && !window.confirm("Reload now? Unsaved changes are kept in this browser, but not in your file.")) return;
-                switching = true;
-                next.postMessage("skip-waiting");
-              };
-              const onToast = (e: Event) => (e.target as Element).closest?.(".toast")?.textContent?.startsWith("A new version") && reload();
-              window.addEventListener("click", onToast, true);
-            }
+            if (next.state === "installed" && navigator.serviceWorker.controller) offer();
           });
         });
       })

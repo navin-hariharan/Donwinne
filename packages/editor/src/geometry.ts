@@ -1,4 +1,5 @@
 import type { FTNode, Net, Note, Place, Point, Transition } from "@pns/core";
+import { isFaultTree } from "@pns/core";
 
 export const PLACE_R = 20;
 export const TRANS_W = 14;
@@ -29,14 +30,35 @@ export function ftSize(n: FTNode): { w: number; h: number } {
   }
 }
 
+interface ShapeIndex {
+  places: Place[];
+  transitions: Transition[];
+  ft: FTNode[] | undefined;
+  sizes: string;
+  byId: Map<string, NodeShape>;
+}
+
+const shapeCache = new WeakMap<Net, ShapeIndex>();
+
+/** Nodes by id, so drawing a big net doesn't search the node lists once for every arc end. */
+function shapeIndex(net: Net): ShapeIndex {
+  const ft = net.faultTree?.nodes;
+  const sizes = `${net.places.length},${net.transitions.length},${ft?.length ?? 0}`;
+  const hit = shapeCache.get(net);
+  // Edits replace the net, but some code builds one up in place: check that the lists are still the same.
+  if (hit && hit.places === net.places && hit.transitions === net.transitions && hit.ft === ft && hit.sizes === sizes) return hit;
+  const byId = new Map<string, NodeShape>();
+  // On an id clash the first match wins, places before transitions before fault tree nodes, as a search of the lists would find.
+  for (const f of ft ?? []) if (!byId.has(f.id)) byId.set(f.id, { kind: "ft", node: f });
+  for (let i = net.transitions.length - 1; i >= 0; i--) byId.set(net.transitions[i].id, { kind: "transition", node: net.transitions[i] });
+  for (let i = net.places.length - 1; i >= 0; i--) byId.set(net.places[i].id, { kind: "place", node: net.places[i] });
+  const idx = { places: net.places, transitions: net.transitions, ft, sizes, byId };
+  shapeCache.set(net, idx);
+  return idx;
+}
+
 export function shapeOf(net: Net, id: string): NodeShape | undefined {
-  const p = net.places.find((x) => x.id === id);
-  if (p) return { kind: "place", node: p };
-  const t = net.transitions.find((x) => x.id === id);
-  if (t) return { kind: "transition", node: t };
-  const f = net.faultTree?.nodes.find((x) => x.id === id);
-  if (f) return { kind: "ft", node: f };
-  return undefined;
+  return shapeIndex(net).byId.get(id);
 }
 
 /** Point where the ray from the node centre towards `toward` leaves the node outline. */
@@ -123,7 +145,7 @@ const parallelCache = new WeakMap<Net["arcs"], Map<string, number>>();
  * Arcs without bend points that join the same two nodes (in either direction) would be drawn on top of
  * each other. Each gets a sideways offset so all of them stay visible and clickable; 0 = straight.
  */
-function parallelOffset(net: Net, arc: { id?: string; source: string; target: string; points?: Point[] }): number {
+export function parallelOffset(net: Net, arc: { id?: string; source: string; target: string; points?: Point[] }): number {
   if (!arc.id || arc.points?.length) return 0;
   let m = parallelCache.get(net.arcs);
   if (!m) {
@@ -151,7 +173,11 @@ export function arcPath(net: Net, arc: { id?: string; source: string; target: st
   const s = shapeOf(net, arc.source);
   const t = shapeOf(net, arc.target);
   if (!s || !t) return null;
-  const off = parallelOffset(net, arc);
+  return arcPathBetween(s, t, arc.points, parallelOffset(net, arc));
+}
+
+/** As arcPath, for an arc whose end nodes and sideways offset are already known. */
+export function arcPathBetween(s: NodeShape, t: NodeShape, points: Point[] | undefined, off: number): Point[] | null {
   if (off) {
     const dx = t.node.x - s.node.x;
     const dy = t.node.y - s.node.y;
@@ -159,7 +185,7 @@ export function arcPath(net: Net, arc: { id?: string; source: string; target: st
     const bend = { x: (s.node.x + t.node.x) / 2 - (dy / len) * off, y: (s.node.y + t.node.y) / 2 + (dx / len) * off };
     return [boundaryPoint(s, bend), bend, boundaryPoint(t, bend, 1)];
   }
-  const mid = arc.points ?? [];
+  const mid = points ?? [];
   if (s.node === t.node && !mid.length) return null;
   const first = mid[0] ?? { x: t.node.x, y: t.node.y };
   const last = mid[mid.length - 1] ?? { x: s.node.x, y: s.node.y };
@@ -168,9 +194,11 @@ export function arcPath(net: Net, arc: { id?: string; source: string; target: st
 
 /** Fault tree edge: an elbow from the top of the input up to the bottom of the gate it feeds. */
 export function ftEdgePath(net: Net, e: { source: string; target: string }): Point[] | null {
-  const s = net.faultTree?.nodes.find((n) => n.id === e.source);
-  const t = net.faultTree?.nodes.find((n) => n.id === e.target);
-  if (!s || !t) return null;
+  const ss = shapeOf(net, e.source);
+  const ts = shapeOf(net, e.target);
+  if (ss?.kind !== "ft" || ts?.kind !== "ft") return null;
+  const s = ss.node;
+  const t = ts.node;
   const a = { x: s.x, y: s.y - ftSize(s).h / 2 };
   const b = { x: t.x, y: t.y + ftSize(t).h / 2 };
   if (a.y <= b.y + 4) return [a, b];
@@ -321,4 +349,94 @@ function buildPageView(net: Net, page: string | null): PageView {
     ghosts,
     remapped,
   };
+}
+
+/** Fields that only say where an element is drawn. */
+const LAYOUT_KEYS = new Set(["x", "y", "labelOffset", "points"]);
+
+function sameApartFromLayout(xs: object[], ys: object[]): boolean {
+  if (xs === ys) return true;
+  if (xs.length !== ys.length) return false;
+  for (let i = 0; i < xs.length; i++) {
+    const a = xs[i] as Record<string, unknown>;
+    const b = ys[i] as Record<string, unknown>;
+    if (a === b) continue;
+    for (const k in a) if (!LAYOUT_KEYS.has(k) && a[k] !== b[k]) return false;
+    for (const k in b) if (!LAYOUT_KEYS.has(k) && !(k in a) && b[k] !== undefined) return false;
+  }
+  return true;
+}
+
+/**
+ * Whether two versions of a net differ at most in their layout: node positions, label offsets, bend points and notes.
+ * Such a change leaves the compiled net and its problems as they were. Not for fault trees, whose gates take
+ * their inputs in drawing order.
+ */
+export function sameButLayout(a: Net, b: Net): boolean {
+  if (a === b) return true;
+  if (isFaultTree(a.netClass) || isFaultTree(b.netClass)) return false;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    if (k === "places" || k === "transitions" || k === "arcs" || k === "notes") continue;
+    if ((a as unknown as Record<string, unknown>)[k] !== (b as unknown as Record<string, unknown>)[k]) return false;
+  }
+  return sameApartFromLayout(a.places, b.places) && sameApartFromLayout(a.transitions, b.transitions) && sameApartFromLayout(a.arcs, b.arcs);
+}
+
+// ---------- level of detail ----------
+
+/** Labels that would come out smaller than this on screen (in pixels) are left out of the canvas. */
+export const LABEL_MIN_PX = 6;
+
+/**
+ * The smallest label font size (in drawing units) still shown at this zoom; 0 shows every label.
+ * Rounded up to the half unit label sizes step by, so it only changes when it crosses some label size.
+ */
+export function labelCutoff(zoom: number): number {
+  const min = LABEL_MIN_PX / zoom;
+  if (min <= 10) return 0;
+  if (min > 12) return Infinity;
+  return Math.ceil(min * 2) / 2;
+}
+
+/** Names longer than this are cut short on the canvas. */
+export const NAME_MAX = 20;
+
+export function shortName(s: string, max = NAME_MAX): string {
+  return s.length > max ? s.slice(0, max - 1) + "…" : s;
+}
+
+/**
+ * The part of the drawing worth rendering: what is on screen plus a margin, its edges rounded outwards
+ * to a step so that panning a little doesn't change it.
+ */
+export function cullBox(view: { x: number; y: number; zoom: number }, w: number, h: number, marginPx = 240): Box {
+  const step = marginPx / view.zoom;
+  const x0 = Math.floor((-view.x / view.zoom - step) / step) * step;
+  const y0 = Math.floor((-view.y / view.zoom - step) / step) * step;
+  const x1 = Math.ceil(((w - view.x) / view.zoom + step) / step) * step;
+  const y1 = Math.ceil(((h - view.y) / view.zoom + step) / step) * step;
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** Whether a point, grown by `r` on every side, touches the box. */
+export function nearBox(b: Box, x: number, y: number, r: number): boolean {
+  return x + r >= b.x && x - r <= b.x + b.w && y + r >= b.y && y - r <= b.y + b.h;
+}
+
+/** Edge auto-scroll: within this many pixels of the canvas edge a drag pans the view. */
+export const EDGE_ZONE = 30;
+/** Pan speed (pixels per frame) with the pointer on or past the edge. */
+export const EDGE_SPEED = 16;
+
+/** How far to pan the view this frame for a drag at `p` (canvas pixels) on a w×h canvas; zero away from the edges. */
+export function edgePan(p: Point, w: number, h: number): Point {
+  const along = (v: number, size: number) => {
+    // A canvas this small is all edge: leave it alone.
+    if (size < EDGE_ZONE * 4) return 0;
+    if (v < EDGE_ZONE) return (EDGE_SPEED * Math.min(EDGE_ZONE, EDGE_ZONE - v)) / EDGE_ZONE;
+    if (v > size - EDGE_ZONE) return (-EDGE_SPEED * Math.min(EDGE_ZONE, v - (size - EDGE_ZONE))) / EDGE_ZONE;
+    return 0;
+  };
+  return { x: along(p.x, w), y: along(p.y, h) };
 }

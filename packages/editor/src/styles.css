@@ -12,6 +12,7 @@
   --enabled: #15803d;
   --enabled-fill: #dcfce7;
   --error: #dc2626;
+  --trail: #dc2626;
   --warning: #b45309;
   --node-fill: #ffffff;
   --node-stroke: #1d2330;
@@ -38,6 +39,7 @@
     --enabled: #4ade80;
     --enabled-fill: #163323;
     --error: #f87171;
+    --trail: #f87171;
     --warning: #fbbf24;
     --node-fill: #1d222b;
     --node-stroke: #d6dbe4;
@@ -64,6 +66,7 @@
   --enabled: #4ade80;
   --enabled-fill: #163323;
   --error: #f87171;
+  --trail: #f87171;
   --warning: #fbbf24;
   --node-fill: #1d222b;
   --node-stroke: #d6dbe4;
@@ -434,10 +437,16 @@ kbd {
   margin: 6px 2px;
 }
 
+/* A section heading for the drawing tools, set apart from the select tool above it. */
 .palette-label {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted);
   text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 6px;
 }
 
 .canvas-wrap {
@@ -779,6 +788,31 @@ kbd {
   text-align: right;
 }
 
+.blocked {
+  margin-top: 8px;
+  font-size: 12px;
+}
+.blocked summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 600;
+}
+.blocked-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  max-height: 160px;
+  overflow: auto;
+}
+.blocked-list li {
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1.35;
+}
+.blocked-list li:hover {
+  background: var(--hover, rgba(127, 127, 127, 0.12));
+}
 .enabled-list {
   display: flex;
   flex-wrap: wrap;
@@ -1528,6 +1562,67 @@ button.swatch.on {
   max-height: 50vh;
   overflow: auto;
 }
+.rg-graph {
+  max-height: 50vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.rg-graph svg {
+  display: block;
+  font-size: 11px;
+}
+.rg-node {
+  cursor: pointer;
+}
+.rg-node rect {
+  fill: var(--panel);
+  stroke: var(--muted);
+  stroke-width: 1.2;
+}
+.rg-node.initial rect {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.rg-node.dead rect {
+  stroke: var(--trail);
+  stroke-width: 2;
+  fill: color-mix(in srgb, var(--trail) 10%, var(--panel));
+}
+.rg-node:hover rect,
+.rg-node:focus-visible rect {
+  stroke: var(--accent);
+}
+.rg-node text {
+  fill: currentColor;
+}
+.rg-node .rg-name {
+  font-weight: 600;
+}
+.rg-node .rg-marking {
+  font-family: var(--font-mono);
+  fill: var(--muted);
+}
+.rg-edge path {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.2;
+}
+.rg-edge text {
+  fill: var(--muted);
+  font-size: 10px;
+  paint-order: stroke;
+  stroke: var(--panel-2);
+  stroke-width: 3px;
+}
+.rg-arrowhead {
+  fill: var(--muted);
+}
+.rg-view {
+  display: inline-flex;
+  margin-left: auto;
+}
 .rg-head {
   display: flex;
   gap: 12px;
@@ -1611,6 +1706,40 @@ button.swatch.on {
 }
 .class-card.compact {
   min-height: 0;
+}
+/* start dialog: open, examples and recent files above the gallery */
+.start-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+.start-row > button.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.start-label {
+  margin-left: 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.start-recent {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+}
+.start-hint {
+  margin-left: auto;
+}
+.start-examples {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
 }
 .help-grid {
   display: grid;
@@ -1720,6 +1849,21 @@ button.swatch.on {
   box-shadow: var(--shadow);
   padding: 4px 8px;
   white-space: nowrap;
+}
+.sim-step {
+  font-size: 12px;
+  padding: 0 6px;
+  min-width: 52px;
+  text-align: center;
+}
+.sim-speed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+.sim-speed span {
+  min-width: 30px;
 }
 .topbar {
   flex-wrap: nowrap;
@@ -1920,6 +2064,51 @@ body.resizing-y * {
 }
 .grid-table input:focus {
   background: var(--panel);
+}
+.grid-table th:has(.th-sort) {
+  padding: 0;
+}
+.th-sort {
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: inherit;
+  padding: 4px 8px;
+  justify-content: flex-start;
+  gap: 4px;
+}
+.th-sort:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.sort-mark {
+  font-size: 9px;
+  color: var(--accent);
+}
+.grid-table.windowed tbody tr:not(.spacer) {
+  height: 27px;
+}
+.grid-table tr.spacer td,
+.grid-table tr.spacer:hover td {
+  padding: 0;
+  border: none;
+  background: none;
+}
+/* a find result, pulsing briefly on the canvas */
+svg.canvas .find-pulse {
+  animation: find-pulse 0.5s ease-in-out 3;
+}
+@keyframes find-pulse {
+  50% {
+    filter: drop-shadow(0 0 5px var(--accent)) drop-shadow(0 0 2px var(--accent));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  svg.canvas .find-pulse {
+    animation-duration: 1.5s;
+    animation-iteration-count: 1;
+  }
 }
 .tree {
   list-style: none;
@@ -3431,4 +3620,59 @@ body {
 .screen-phone .arc-tool.choosable > .tool,
 .screen-short .arc-tool.choosable > .tool {
   padding-right: 6px;
+}
+
+/* Token trail: places whose tokens are stuck in a deadlock pulse gently. */
+.trail-stuck {
+  animation: trail-stuck 1.6s ease-in-out infinite;
+}
+
+@keyframes trail-stuck {
+  50% {
+    stroke-width: 5;
+    fill-opacity: 0.22;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trail-stuck {
+    animation: none;
+  }
+}
+
+.deadlock-banner {
+  position: absolute;
+  /* Below the token game bar. */
+  top: 62px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: min(680px, calc(100% - 24px));
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--trail);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+
+.deadlock-banner strong {
+  color: var(--trail);
+}
+
+.deadlock-banner button {
+  font-size: 12px;
+}
+
+/* On phones the token game bar wraps onto several rows, so the banner sits at the bottom instead. */
+.screen-phone .deadlock-banner {
+  top: auto;
+  bottom: 10px;
+  font-size: 12px;
 }

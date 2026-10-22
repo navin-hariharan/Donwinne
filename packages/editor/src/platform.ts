@@ -30,6 +30,7 @@ export type MenuCommand =
   | "zoom-in"
   | "zoom-out"
   | "zoom-fit"
+  | "zoom-selection"
   | "about"
   | "new"
   | "import"

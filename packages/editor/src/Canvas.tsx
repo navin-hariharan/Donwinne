@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { FTNodeType, Point, enabledBindings, initialMarking, isFaultTree, isPlace } from "@pns/core";
-import { CSS_PALETTE, NetDrawing } from "./NetDrawing";
-import { GRID, PLACE_R, arcPath, boundaryPoint, distToSegment, ftSize, netBounds, pageView, shapeOf, snap, transSize } from "./geometry";
+import { FTNodeType, Point, disabledReasons, enabledBindings, initialMarking, isFaultTree, isPlace, showTokens } from "@pns/core";
+import { CSS_PALETTE, NetDrawing, useLayoutStableNet } from "./NetDrawing";
+import { GRID, PLACE_R, arcPath, boundaryPoint, cullBox, distToSegment, edgePan, ftSize, labelCutoff, netBounds, pageView, shapeOf, snap, transSize } from "./geometry";
 import {
   Tool,
   addArc,
@@ -21,7 +21,9 @@ import {
   fireTransition,
   moveSelection,
   reconnectArc,
+  requestFit,
   select,
+  simGoto,
   snapSelection,
   timedEnabled,
   toast,
@@ -39,6 +41,7 @@ import { propsDocked, useCoarsePointer, useScreenClass } from "./responsive";
 import { PropsPeek } from "./PropsSheet";
 import { blockingInhibitors, enabledAt, isAmbientNet, useAmbient } from "./ambient";
 import { StepPicker, StepTray, ambientTransitionClick } from "./AmbientSim";
+import { tokenTrail } from "./trail";
 
 type Drag =
   | { kind: "move"; ids: string[]; last: Point; key: string; moved: boolean; startScreen: Point; slop: number }
@@ -58,6 +61,8 @@ type Drag =
     }
   | { kind: "band"; start: Point; current: Point; additive: boolean }
   | { kind: "bend"; arcId: string; index: number; key: string }
+  /** Pressed on a segment's midpoint handle: becomes a new bend point once the pointer has moved past the slop. */
+  | { kind: "segment"; arcId: string; segment: number; startScreen: Point; slop: number }
   | { kind: "connect"; source: string; start: Point }
   | { kind: "arcend"; arcId: string; end: "source" | "target" }
   | { kind: "label"; id: string; start: Point; orig: Point; key: string }
@@ -89,6 +94,8 @@ export function Canvas() {
   const highlight = useStore((s) => s.highlight);
   const ftFailed = useStore((s) => s.ftFailed);
   const showMinimap = useStore((s) => s.showMinimap);
+  const showTrail = useStore((s) => s.showTrail);
+  const trailFrom = useStore((s) => s.trailFrom);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<Drag>(null);
@@ -111,11 +118,20 @@ export function Canvas() {
   const longPressFired = useRef(false);
   /** The selection before the first finger came down, restored if that finger turns out to start a pinch. */
   const selBeforeTouch = useRef<string[] | null>(null);
+  // Edge auto-scroll: the pending animation frame and where the dragging pointer last was.
+  const scrollFrame = useRef<number | null>(null);
+  const lastPointer = useRef<{ clientX: number; clientY: number } | null>(null);
+  /** The current render's dragTo, for the animation frames of the edge auto-scroll. */
+  const dragToLatest = useRef<(e: { clientX: number; clientY: number }) => void>(() => undefined);
+  // The canvas size, for culling. Until it is measured the window's size stands in: the canvas is no bigger.
+  const [size, setSize] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
 
   useEffect(() => setHover(null), [net, page]);
   const pv = pageView(net, page);
   const vnet = pv.net;
-  const cn = compiled(net);
+  // While editing, a drag only moves things: keep the compiled net (and the marking and problems drawn from it).
+  const stableNet = useLayoutStableNet(net);
+  const cn = compiled(mode === "edit" ? stableNet : net);
   const editMarking = useMemo(() => initialMarking(cn), [cn]);
   const marking = mode === "simulate" ? sim[simIndex]?.marking ?? null : editMarking;
   const ambient = isAmbientNet(net);
@@ -129,12 +145,34 @@ export function Canvas() {
   }, [mode, marking, cn, sim, simIndex, ambient, net]);
   // Step token game: colour-sensitive inhibitor arcs that block a colour mode right now.
   const blocking = useMemo(() => (ambient && mode === "simulate" && marking ? blockingInhibitors(net, marking) : undefined), [ambient, mode, marking, net]);
-  const errorIds = useMemo(() => new Set(problemsOf(net).filter((p) => p.severity === "error" && p.elementId).map((p) => p.elementId!)), [cn]);
+  const errorIds = useMemo(() => new Set(problemsOf(mode === "edit" ? stableNet : net).filter((p) => p.severity === "error" && p.elementId).map((p) => p.elementId!)), [cn]);
   // In the step token game the transitions of the step being collected are drawn as selected.
   const selSet = useMemo(() => new Set(mode === "simulate" && ambient ? [...selection, ...pending.map((st) => st.transition)] : selection), [selection, mode, ambient, pending]);
   const hlSet = useMemo(() => new Set(highlight), [highlight]);
   const failedSet = useMemo(() => new Set(ftFailed), [ftFailed]);
   const lastFired = mode === "simulate" ? sim[simIndex]?.transitionIds ?? sim[simIndex]?.transitionId : undefined;
+  // Dead: nothing can fire now, and (in timed nets) waiting would not change that.
+  const dead = useMemo(() => {
+    if (mode !== "simulate" || !marking || enabled.size) return false;
+    const ts = sim[simIndex]?.timed;
+    return !(ts && Number.isFinite(timedEnabled(ts).minDelay));
+  }, [mode, marking, enabled, sim, simIndex]);
+  // The red trail of the tokens; in a deadlock the whole route to it is drawn at full strength.
+  const trail = useMemo(
+    () => (mode === "simulate" && showTrail ? tokenTrail(net, sim, trailFrom, simIndex, dead).strength : undefined),
+    [mode, showTrail, net, sim, trailFrom, simIndex, dead],
+  );
+  // Places (and the subnets holding them) whose tokens are stuck in the deadlock.
+  const stuck = useMemo(() => {
+    if (!dead || !showTrail || !marking) return undefined;
+    const out = new Set<string>();
+    const parentOf = new Map([...net.places, ...net.transitions].map((n) => [n.id, n.parent] as const));
+    for (const p of cn.places) {
+      if (!marking[p.slot]?.size) continue;
+      for (let cur: string | undefined = p.id, n = 0; cur && n < 64; cur = parentOf.get(cur), n++) out.add(cur);
+    }
+    return out;
+  }, [dead, showTrail, marking, cn, net]);
   const ft = isFaultTree(net.netClass);
 
   useEffect(() => {
@@ -160,6 +198,7 @@ export function Canvas() {
     const el = svgRef.current;
     if (!el) return;
     let prev = el.getBoundingClientRect();
+    setSize({ w: prev.width, h: prev.height });
     const allVisible = (w: number, h: number) => {
       const s = useStore.getState();
       const b = netBounds(pageView(s.net, s.page).net, 0);
@@ -174,9 +213,13 @@ export function Canvas() {
       const shrank = r.height < prev.height - 4 || r.width < prev.width - 4;
       if (shrank && r.width > 0 && r.height > 0 && allVisible(prev.width, prev.height) && !allVisible(r.width, r.height)) fit();
       prev = r;
+      setSize({ w: r.width, h: r.height });
     });
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      stopEdgeScroll();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -286,6 +329,7 @@ export function Canvas() {
   /** A second finger turns whatever the first one started into a pinch: zoom and pan together. */
   function startPinch() {
     cancelLongPress();
+    stopEdgeScroll();
     const d = drag.current;
     if (d?.kind === "move" && d.moved) {
       snapSelection(d.ids);
@@ -420,16 +464,9 @@ export function Canvas() {
       return;
     }
     if (h?.segment !== undefined) {
-      // Drag the middle of a segment to create a bend point there.
-      const arc = net.arcs.find((a) => a.id === h.id)!;
-      const points = [...(arc.points ?? [])];
-      // An arc with no bends of its own may still be drawn with a sideways bulge (parallel arcs): its segment
-      // handles then don't line up with stored points, and the new point simply becomes its first bend.
-      const index = points.length ? h.segment : 0;
-      points.splice(index, 0, { x: snap(p.x, snapOn), y: snap(p.y, snapOn) });
-      const key = `bend-${Date.now()}`;
-      updateArc(arc.id, { points }, key);
-      drag.current = { kind: "bend", arcId: arc.id, index, key };
+      // Drag the middle of a segment to create a bend point there. Not before the pointer really moves:
+      // a click or double-click on the handle leaves the arc as it is.
+      drag.current = { kind: "segment", arcId: h.id, segment: h.segment, startScreen: { x: e.clientX, y: e.clientY }, slop: touch ? 8 : 3 };
       el.setPointerCapture(e.pointerId);
       return;
     }
@@ -531,7 +568,10 @@ export function Canvas() {
     const res = enabledBindings(cn, t.index, M);
     if (res.error) toast(res.error, "error");
     if (!res.bindings.length) {
-      toast(`${t.name} is not enabled`);
+      if (!res.error) {
+        const why = disabledReasons(cn, t.index, M);
+        toast(`${t.name} cannot fire${why.length ? `: ${why.join("; ")}` : ""}`);
+      }
       return;
     }
     if (res.bindings.length === 1) fireTransition(transitionId, res.bindings[0]);
@@ -549,17 +589,30 @@ export function Canvas() {
     }
     const lp = longPress.current;
     if (lp && lp.pointerId === e.pointerId && Math.hypot(e.clientX - lp.start.x, e.clientY - lp.start.y) > 8) cancelLongPress();
-    const p = toWorld(e);
-    if (e.pointerType === "mouse" || drag.current) setCursor(p);
-    if (arcDraft) setArcDraft({ ...arcDraft, cursor: p });
-    const d = drag.current;
-    if (!d) {
+    if (!drag.current) {
+      const p = toWorld(e);
+      if (e.pointerType === "mouse") {
+        setCursor(p);
+        useStore.setState({ pointer: p });
+      }
+      if (arcDraft) setArcDraft({ ...arcDraft, cursor: p });
       // Hover (handles, tips) only means something for a mouse or pen.
       if (e.pointerType === "touch") return;
       const h = hit(e);
       setHover(h && (isNodeKind(h.kind) || h.kind === "arc" || h.kind === "note") ? h.id : h?.handle ? h.id : null);
       return;
     }
+    dragTo(e);
+    edgeScroll(e);
+  }
+
+  /** Carry the drag on to a pointer position: from a pointer move, or after the view scrolled under a still pointer. */
+  function dragTo(e: { clientX: number; clientY: number }) {
+    const d = drag.current;
+    if (!d) return;
+    const p = toWorld(e);
+    setCursor(p);
+    setArcDraft((a) => a && { ...a, cursor: p });
     if (d.kind === "pan") {
       if (!d.moved && Math.hypot(e.clientX - d.startScreen.x, e.clientY - d.startScreen.y) < (d.touch ? 8 : 4)) return;
       d.moved = true;
@@ -581,6 +634,18 @@ export function Canvas() {
     } else if (d.kind === "band") {
       d.current = p;
       setBand({ a: d.start, b: p });
+    } else if (d.kind === "segment") {
+      if (Math.hypot(e.clientX - d.startScreen.x, e.clientY - d.startScreen.y) < d.slop) return;
+      const arc = useStore.getState().net.arcs.find((a) => a.id === d.arcId);
+      if (!arc) return;
+      const points = [...(arc.points ?? [])];
+      // An arc with no bends of its own may still be drawn with a sideways bulge (parallel arcs): its segment
+      // handles then don't line up with stored points, and the new point simply becomes its first bend.
+      const index = points.length ? d.segment : 0;
+      points.splice(index, 0, { x: snap(p.x, snapOn), y: snap(p.y, snapOn) });
+      const key = `bend-${Date.now()}`;
+      updateArc(arc.id, { points }, key);
+      drag.current = { kind: "bend", arcId: arc.id, index, key };
     } else if (d.kind === "bend") {
       const arc = useStore.getState().net.arcs.find((a) => a.id === d.arcId);
       if (!arc?.points) return;
@@ -594,12 +659,48 @@ export function Canvas() {
       if (isPlace(net, d.id)) updatePlace(d.id, { labelOffset: off }, d.key);
       else updateTransition(d.id, { labelOffset: off }, d.key);
     }
-    if (d.kind === "arcend") setCursor(p);
+  }
+
+  // Dragging nodes, a selection band or an arc close to the canvas edge pans the view that way,
+  // faster the closer the pointer gets, until the drag ends or the pointer moves back in.
+  dragToLatest.current = dragTo;
+
+  function edgeVelocity(): Point | null {
+    const d = drag.current;
+    const at = lastPointer.current;
+    const el = svgRef.current;
+    if (!d || !at || !el) return null;
+    if (!((d.kind === "move" && d.moved) || d.kind === "band" || d.kind === "connect" || d.kind === "arcend" || d.kind === "bend")) return null;
+    const r = el.getBoundingClientRect();
+    const v = edgePan({ x: at.clientX - r.left, y: at.clientY - r.top }, r.width, r.height);
+    return v.x || v.y ? v : null;
+  }
+
+  function edgeScroll(e: { clientX: number; clientY: number }) {
+    lastPointer.current = { clientX: e.clientX, clientY: e.clientY };
+    if (scrollFrame.current !== null || !edgeVelocity()) return;
+    const frame = () => {
+      scrollFrame.current = null;
+      const v = edgeVelocity();
+      if (!v || !lastPointer.current) return;
+      const view = useStore.getState().view;
+      useStore.setState({ view: { ...view, x: view.x + v.x, y: view.y + v.y } });
+      dragToLatest.current(lastPointer.current);
+      scrollFrame.current = requestAnimationFrame(frame);
+    };
+    scrollFrame.current = requestAnimationFrame(frame);
+  }
+
+  function stopEdgeScroll() {
+    if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
+    scrollFrame.current = null;
+    lastPointer.current = null;
   }
 
   function onPointerUp(e: React.PointerEvent) {
     const touch = e.pointerType === "touch";
     if (longPress.current?.pointerId === e.pointerId) cancelLongPress();
+    stopEdgeScroll();
     if (touch) {
       touches.current.delete(e.pointerId);
       if (pinch.current && touches.current.size < 2) pinch.current = null;
@@ -693,6 +794,7 @@ export function Canvas() {
   function onPointerCancel(e: React.PointerEvent) {
     touches.current.delete(e.pointerId);
     cancelLongPress();
+    stopEdgeScroll();
     if (touches.current.size < 2) pinch.current = null;
     if (!touches.current.size) gestureLock.current = false;
     const d = drag.current;
@@ -735,7 +837,8 @@ export function Canvas() {
       }
       return;
     }
-    if (h.kind === "arc") {
+    // A segment's midpoint handle sits on its arc: double-clicking it edits the arc, as anywhere else on the line.
+    if (h.kind === "arc" || h.kind === "segment") {
       if (net.netClass === "freestyle") return;
       useStore.setState({ selection: [h.id], inlineEdit: { id: h.id, field: "inscription" } });
       return;
@@ -797,6 +900,12 @@ export function Canvas() {
   const selArc = single ? vnet.arcs.find((a) => a.id === single) : undefined;
   const selArcPts = selArc && !pv.remapped.has(selArc.id) ? arcPath(vnet, selArc) : null;
   const k = 1 / view.zoom;
+  // Big nets: labels too small to read are left out, and only what is in view (and a margin around it) is drawn.
+  // Both change in steps, so most pans and zooms leave the drawing's props as they were.
+  const labelMin = labelCutoff(view.zoom);
+  const box = size.w > 0 && size.h > 0 ? cullBox(view, size.w, size.h) : undefined;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const viewport = useMemo(() => box, [box?.x, box?.y, box?.w, box?.h]);
 
   const gridSize = GRID * view.zoom;
   const cursorStyle =
@@ -844,6 +953,12 @@ export function Canvas() {
             ghosts={pv.ghosts}
             editing={inlineEdit && inlineEdit.field !== "inscription" && inlineEdit.field !== "marking" ? inlineEdit.id : null}
             failed={failedSet}
+            trail={trail}
+            stuck={stuck}
+            labelMin={labelMin}
+            hover={labelMin ? hover : undefined}
+            shortNames
+            viewport={viewport}
           />
           {dropTarget && dropTarget !== arcDraft?.source && <DropRing shape={shapeOf(vnet, dropTarget)} k={k} />}
           {selArcPts && selArc && (
@@ -891,6 +1006,7 @@ export function Canvas() {
       <Breadcrumbs />
       <SelectionBar />
       {mode === "simulate" && <SimControls />}
+      {dead && <DeadlockBanner stuck={stuck} firings={simIndex - Math.min(trailFrom, simIndex)} onZoom={() => stuck && zoomTo(stuck)} />}
       <InlineEditor />
       <ContextMenu />
       <BindingPicker />
@@ -955,6 +1071,42 @@ function DropRing({ shape, k }: { shape: ReturnType<typeof shapeOf>; k: number }
   return <rect x={n.x - w / 2 - 6} y={n.y - h / 2 - 6} width={w + 12} height={h + 12} rx={4} className="drop-ring" style={{ strokeWidth: 2.5 * k }} />;
 }
 
+/** Shown on the canvas when the token game reaches a marking where nothing can fire. */
+function DeadlockBanner({ stuck, firings, onZoom }: { stuck: Set<string> | undefined; firings: number; onZoom: () => void }) {
+  const showTrail = useStore((s) => s.showTrail);
+  const simIndex = useStore((s) => s.simIndex);
+  // Hidden for this marking only: stepping back and reaching a deadlock again shows it again.
+  const [hiddenAt, setHiddenAt] = useState<number | null>(null);
+  if (hiddenAt === simIndex) return null;
+  return (
+    <div className="deadlock-banner" role="status" data-testid="deadlock-banner">
+      <span>
+        <strong>Deadlock:</strong> nothing can fire.{" "}
+        {showTrail
+          ? firings
+            ? `The red trail shows the ${firings === 1 ? "firing" : `${firings} firings`} that led here${stuck?.size ? "; the pulsing places hold the stuck tokens" : ""}.`
+            : stuck?.size
+              ? "The pulsing places hold the stuck tokens."
+              : "No tokens are left."
+          : "Turn on the red trail in the token game to see how the tokens got here."}
+      </span>
+      {showTrail && !!stuck?.size && (
+        <button className="small" onClick={onZoom}>
+          Show stuck tokens
+        </button>
+      )}
+      {simIndex > 0 && (
+        <button className="small" onClick={() => simGoto(simIndex - 1)} title="Go back one firing (←)">
+          Step back
+        </button>
+      )}
+      <button className="icon small" onClick={() => setHiddenAt(simIndex)} title="Hide this message" aria-label="Hide this message">
+        ×
+      </button>
+    </div>
+  );
+}
+
 function EmptyHint({ ft, subnet, touch, below }: { ft: boolean; subnet: boolean; touch: boolean; below: boolean }) {
   const where = below ? "below" : "the left";
   return (
@@ -981,6 +1133,7 @@ function HoverTip({ id }: { id: string }) {
   const net = useStore((s) => s.net);
   const view = useStore((s) => s.view);
   const mode = useStore((s) => s.mode);
+  const M = useStore((s) => (s.mode === "simulate" ? s.sim[s.simIndex]?.marking ?? null : null));
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     setVisible(false);
@@ -994,10 +1147,13 @@ function HoverTip({ id }: { id: string }) {
   const a = net.arcs.find((x) => x.id === real);
   const f = net.faultTree?.nodes.find((x) => x.id === real);
   const lines: string[] = [];
+  let why: string[] | null = null;
   let at: Point | null = null;
   if (p) {
     at = { x: p.x, y: p.y + PLACE_R };
     lines.push(`Place ${p.name}${p.logical ? " (logical)" : ""}${p.coarse ? " (subnet)" : ""}`);
+    const cp = M && !p.coarse ? compiled(net).places.find((x) => x.id === p.id) : undefined;
+    if (cp && M) lines.push(`Tokens now: ${showTokens(compiled(net), M[cp.slot]) || "none"}`);
     if (p.marking) lines.push(`Initial marking: ${p.marking}`);
     if (p.colourSet) lines.push(`Colour set: ${p.colourSet}`);
     if (p.capacity) lines.push(`Capacity: ${p.capacity}`);
@@ -1010,6 +1166,14 @@ function HoverTip({ id }: { id: string }) {
     if (t.interval) lines.push(`Interval: [${t.interval[0]}, ${t.interval[1]}]`);
     if (t.sound) lines.push(`Plays ${t.sound.note}`);
     if (t.comment) lines.push(t.comment);
+    if (M && !t.coarse) {
+      const cn = compiled(net);
+      const ct = cn.transitions.find((x) => x.id === t.id);
+      if (ct) {
+        why = isAmbientNet(net) ? null : disabledReasons(cn, ct.index, M);
+        if (why?.length) lines.push(...why.map((r) => `Cannot fire: ${r}`));
+      }
+    }
   } else if (f) {
     at = { x: f.x, y: f.y + 24 };
     lines.push(`${f.type === "kofn" ? `${f.k}-out-of-n gate` : f.type} ${f.name}`);
@@ -1032,13 +1196,13 @@ function HoverTip({ id }: { id: string }) {
           {l}
         </div>
       ))}
-      {hoverHint(mode, !!t, !!p)}
+      {hoverHint(mode, !!t, !!p, why)}
     </div>
   );
 }
 
-function hoverHint(mode: string, isT: boolean, isP: boolean) {
-  if (mode === "simulate") return isT ? <div className="hover-hint">Click to fire</div> : null;
+function hoverHint(mode: string, isT: boolean, isP: boolean, why: string[] | null) {
+  if (mode === "simulate") return isT && !why?.length ? <div className="hover-hint">Click to fire</div> : null;
   if (isP) return <div className="hover-hint">Double-click inside to edit tokens, on the name to rename</div>;
   if (isT) return <div className="hover-hint">Double-click to rename, right-click for more</div>;
   return null;
@@ -1099,6 +1263,40 @@ function BindingPicker() {
       </button>
     </div>
   );
+}
+
+/** Bring the given elements of the current page into view, zooming in no further than 1.2. False if none of them is there. */
+function zoomTo(ids: Set<string>): boolean {
+  const el = document.querySelector<SVGSVGElement>("svg.canvas");
+  if (!el) return false;
+  const s = useStore.getState();
+  const v = pageView(s.net, s.page).net;
+  const real = (id: string) => (id.startsWith("ghost:") ? id.slice(6) : id);
+  const has = (id: string) => ids.has(id) || ids.has(real(id));
+  const sub = {
+    ...v,
+    places: v.places.filter((p) => has(p.id)),
+    transitions: v.transitions.filter((t) => has(t.id)),
+    arcs: v.arcs.filter((a) => has(a.id)),
+    notes: v.notes?.filter((n) => has(n.id)),
+    faultTree: v.faultTree && { nodes: v.faultTree.nodes.filter((n) => has(n.id)), edges: [] },
+  };
+  if (!sub.places.length && !sub.transitions.length && !sub.notes?.length && !sub.faultTree?.nodes.length) return false;
+  const r = el.getBoundingClientRect();
+  const b = netBounds(sub, 80);
+  const zoom = Math.min(1.2, Math.max(0.1, Math.min(r.width / b.w, r.height / b.h)));
+  useStore.setState({ view: { zoom, x: (r.width - b.w * zoom) / 2 - b.x * zoom, y: (r.height - b.h * zoom) / 2 - b.y * zoom } });
+  return true;
+}
+
+/** View › Zoom to selection: the selected elements (an arc with its two nodes), or the whole page when nothing is selected. */
+export function zoomToSelection() {
+  const s = useStore.getState();
+  const v = pageView(s.net, s.page).net;
+  const ids = new Set(s.selection);
+  for (const a of v.arcs) if (ids.has(a.id)) ids.add(a.source).add(a.target);
+  for (const e of v.faultTree?.edges ?? []) if (ids.has(e.id)) ids.add(e.source).add(e.target);
+  if (!ids.size || !zoomTo(ids)) requestFit();
 }
 
 export function zoomBy(factor: number) {

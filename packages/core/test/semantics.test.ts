@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Arc, ArcKind, Net, compile, emptyNet, enabledBindings, fire, initialMarking, parse, showTokens } from "@pns/core";
+import { Arc, ArcKind, Net, compile, disabledReasons, emptyNet, enabledBindings, fire, initialMarking, parse, showTokens } from "@pns/core";
 
 function ptNet(
   netClass: Net["netClass"],
@@ -181,5 +181,47 @@ describe("logical places", () => {
     net.places[0].logical = true;
     const cn = compile(net);
     expect(cn.slotCount).toBe(2);
+  });
+});
+
+describe("why a transition cannot fire", () => {
+  const why = (net: Net, name = "t") => {
+    const cn = compile(net);
+    return disabledReasons(cn, cn.transitions.findIndex((x) => x.name === name), initialMarking(cn));
+  };
+  it("is empty when the transition is enabled", () => {
+    expect(why(ptNet("pt", [["p", "1"]], ["t"], [["p", "t", "1"]]))).toEqual([]);
+  });
+  it("names the place that is short of tokens", () => {
+    expect(why(ptNet("pt", [["p", "1"]], ["t"], [["p", "t", "2"]]))).toEqual(["p has 1 token, needs 2"]);
+  });
+  it("names a blocking inhibitor arc", () => {
+    const r = why(ptNet("xpt", [["p", "1"], ["q", "2"]], ["t"], [["p", "t", "1"], ["q", "t", "1", "inhibitor"]]));
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatch(/inhibitor arc from q blocks it/);
+  });
+  it("names a full output place", () => {
+    expect(why(ptNet("pt", [["p1", "1"], ["p2", "1", 1]], ["t"], [["p1", "t", "1"], ["t", "p2", "1"]]))).toEqual([
+      "firing would put 2 tokens on p2, over its capacity of 1",
+    ]);
+  });
+  it("names a false guard", () => {
+    const net = ptNet("coloured", [["p", "1`dot"]], ["t"], [["p", "t", "1`dot"]]);
+    net.transitions[0].guard = "1 > 3";
+    expect(why(net)).toEqual(["its guard is false"]);
+  });
+});
+
+describe("arc problems", () => {
+  it("name the arc by its ends rather than its id", () => {
+    const net = ptNet("pt", [["buffer", "1"], ["out", ""]], ["take"], [["buffer", "take", "0"], ["take", "out", "-1"], ["buffer", "take", "0"], ["take", "out", "1.5"]]);
+    net.places[0].name = "Buffer";
+    const ps = compile(net).problems;
+    const of = (id: string) => ps.filter((p) => p.elementId === id).map((p) => p.message);
+    expect(of("a0")).toEqual(["Arc Buffer → take: weight 0 has no effect"]);
+    expect(of("a1")).toEqual(["Arc take → out: the weight -1 is negative"]);
+    expect(of("a2")).toContain("Arc Buffer → take: another arc of the same kind joins the same nodes");
+    expect(of("a3")).toContain("Arc take → out: arc weights move whole tokens; 1.5 is not a whole number");
+    expect(ps.every((p) => !/\ba\d\b/.test(p.message))).toBe(true);
   });
 });

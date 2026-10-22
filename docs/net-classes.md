@@ -294,7 +294,7 @@ A music net is an extended net whose transitions play **notes** when they fire. 
 
 ## Freestyle nets
 
-A freestyle net is a sketch: draw places, transitions, arcs and notes with no rules at all, for example arcs from a place to a place. It has no firing rule, no token game, no analysis and no declarations. A freestyle net with a place-to-place or transition-to-transition arc can be saved, but Donwinne currently refuses to open such a file again ("must connect a place and a transition"), so keep sketches with such arcs exported as images, or avoid those arcs.
+A freestyle net is a sketch: draw places, transitions, arcs and notes with no rules at all, for example arcs from a place to a place. It has no firing rule, no token game, no analysis and no declarations. Arcs between two places or two transitions are allowed, and such files save and open again like any other.
 
 ## Ambient Petri nets
 

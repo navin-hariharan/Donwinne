@@ -53,9 +53,9 @@ On a desktop-sized window the menus sit in the menu bar. On narrower screens a *
 
 | Item | Shortcut | What it does |
 | --- | --- | --- |
-| New… | Ctrl+N | Opens the **Create a new model** dialog. |
+| New… | Ctrl+N | Opens the **Create a new model** dialog. Its top row has **Open…**, **Examples** and up to five recent files; pressing Enter creates a place/transition net straight away. |
 | New APN from building blocks… | | Opens the ambient building blocks dialog (see [Ambient Petri nets](ambient-petri-nets.md)). |
-| Open… | Ctrl+O | Opens a Donwinne file (`.pns.json` or `.json`) or a PNML file (`.pnml`, `.xml`). |
+| Open… | Ctrl+O | Opens any file Donwinne can read: its own `.pns.json`, Snoopy files, PNML, ANDL / CANDL and the other formats under [File formats](file-formats.md). |
 | Save | Ctrl+S | Saves to the current file, or asks for a name the first time. |
 | Save as… | Ctrl+Shift+S | Saves under a new name. The suggested name is `<net name>.pns.json`. |
 | Import (Snoopy, PNML, ANDL)… | | Reads a model written by another tool: Snoopy files, PNML, ANDL, CANDL or a DNF fault tree. |
@@ -96,6 +96,7 @@ Editing items are disabled while the token game is running.
 | Zoom in | Ctrl++ (or Ctrl+=) | |
 | Zoom out | Ctrl+− | |
 | Zoom to fit | F (or Ctrl+0) | Fits the whole page in the window. |
+| Zoom to selection | Shift+F | Fits the selected elements in the window; the whole page when nothing is selected. |
 | Overview map | M | A tick shows when it is on. |
 | Snap to grid | G | A tick shows when it is on. Nodes snap to a 10 unit grid. |
 | Bottom panel | B | Shows or hides the bottom panel. |
@@ -138,7 +139,7 @@ From left to right on a desktop:
 - The **Edit** / **Simulate** switch. **Simulate** starts the token game (S). It is hidden for freestyle nets and fault trees; fault trees have an **Analyse tree** button instead, which opens the fault tree tab and runs the analysis.
 - **Help** (?), a **Properties** button (only when the properties panel is not docked) and a theme button that switches between the light and dark theme.
 
-While the token game runs, the palette is replaced by the simulation controls: **Back to the initial marking**, **Step back (←)**, **Step forward (→)**, **Fire a random enabled transition (R)**, **Run random firings (Space)** with a speed slider from 1 to 30 firings per second, a sound button for music nets, and **Keep this marking**. See [Simulation](simulation.md#the-token-game).
+While the token game runs, the palette stays in place but is greyed out, and a bar of simulation controls floats at the top of the canvas: **Back to the initial marking**, **Step back (←)**, **Step forward (→)**, a **Step** counter (for example *Step 3 of 7* after stepping back), **Fire a random enabled transition (R)**, **Run random firings (Space)** with a speed slider from 1 to 30 firings per second, a sound button for music nets, the **token trail** button (T) with **Clear trail**, and **Keep this marking**. See [Simulation](simulation.md#the-token-game).
 
 ## The palette
 
@@ -182,7 +183,7 @@ In fault trees the palette holds events and gates instead: **Top event**, **Even
 3. **Drop on empty space.** If you release the + handle over empty canvas, Donwinne creates a node of the opposite kind there and connects it: a transition after a place, a place after a transition. Coming from a place, the new arc has the current arc kind. This lets you draw a whole chain with one drag per step. A drag shorter than 12 pixels does nothing.
 4. **Or use the arc tool.** With the arc tool, drag from one node to another, or click the first node and then the second. Clicks on empty space in between add bend points.
 
-An arc must join a place and a transition. If it does not, or it would duplicate an existing arc of the same kind, a message explains why ("Arcs must join a place and a transition", "That arc already exists"). Read, inhibitor, reset and equal arcs must go from a place to a transition; modifier arcs need a stochastic, continuous or hybrid net. Freestyle nets have no such rules.
+An arc must join a place and a transition; if it does not, a message explains why ("Arcs must join a place and a transition"). Drawing an arc that already exists (same ends, same kind) does not add a second one: Donwinne selects the existing arc and opens its weight for editing, so you can raise the weight instead. Read, inhibitor, reset and equal arcs must go from a place to a transition; modifier arcs need a stochastic, continuous or hybrid net. Freestyle nets have no such rules.
 
 New arcs get a sensible inscription: `1` for normal arcs, empty for reset arcs, and in coloured nets the dot token or a variable of the place's colour set.
 
@@ -254,7 +255,7 @@ The properties panel offers the same **Arrange** buttons and colours for a multi
 
 ## Copy, cut, paste and duplicate
 
-**Copy** (Ctrl+C) remembers the selected places, transitions, notes and fault tree nodes, plus the arcs between them. **Paste** (Ctrl+V) puts a copy on the current page, shifted by 40 units; **Duplicate** (Ctrl+D) copies and pastes in one go, shifted by 30 units. Pasted nodes whose names are already taken get new names, except logical places, which keep their names because a logical place is meant to appear several times.
+**Copy** (Ctrl+C) remembers the selected places, transitions, notes and fault tree nodes, plus the arcs between them. **Paste** (Ctrl+V) puts a copy on the current page, centred on the mouse pointer (pasting again without moving the mouse steps it down and to the right, so copies do not stack); **Duplicate** (Ctrl+D) copies and pastes in one go, shifted by 30 units. Pasted nodes whose names are already taken get the first free numbered name, so `buffer` becomes `buffer_2`, then `buffer_3`, and a copy of `buffer_2` becomes `buffer_3` rather than `buffer_2_2`. Logical places keep their names, because a logical place is meant to appear several times.
 
 The clipboard lives inside the app: it works between pages and between models in the same window, but not with other programs. Connections between fault tree nodes are not copied.
 
@@ -295,8 +296,11 @@ The **Hierarchy** tab of the element table shows the tree of subnets. Subnets ar
 - **Scroll** with the mouse wheel or two fingers on a trackpad; hold Shift to scroll sideways.
 - **Zoom** with Ctrl+wheel (⌘+wheel on a Mac), a trackpad pinch, the zoom buttons or the View menu. The zoom range is 10% to 400%; the current zoom is shown in the status bar.
 - **Pan** by dragging with the middle or right mouse button, or by holding Space and dragging. In the token game, dragging empty canvas also pans.
-- **Zoom to fit** with F.
+- **Zoom to fit** with F, or **zoom to the selection** with Shift+F (**View > Zoom to selection**; the whole net when nothing is selected).
+- **Scroll while dragging:** when you drag nodes, a selection box, an arc or a bend point near the edge of the canvas, the view scrolls in that direction, faster the closer you are to the edge.
 - The **overview map** in the corner shows the whole page with the visible area outlined. Click or drag in it to move the view; its × button hides it (M shows it again). It only appears when the canvas is large enough, there are at least three nodes, and part of the net is out of view.
+
+In a large net zoomed far out, names and inscriptions too small to read (under about 6 pixels on screen) are left out so the structure stays readable; the selected element and the one under the pointer keep their labels, and zooming in brings them back. Names longer than 20 characters are shortened with "…" on the canvas, with the full name in the tooltip, the properties panel and the element table. Exported images and prints always show every label in full. Only the part of the net in view (plus a margin) is drawn, so panning and dragging stay smooth in nets with thousands of nodes.
 
 Hovering a node for a moment shows a tooltip with its details. The status bar shows hints for the current tool and the pointer's coordinates. An empty page shows a "Start drawing" hint.
 
@@ -310,7 +314,7 @@ Hovering a node for a moment shows a tooltip with its details. The status bar sh
 - notes by their text;
 - arcs by their inscription.
 
-Up to 200 matches are listed and highlighted on the canvas, with the subnet each one is in and the number found. Use **↑** and **↓** to move through the list and **Enter** to go to a match: Donwinne opens the right subnet page and centres the view on it. **Esc** closes the box.
+Up to 200 matches are listed and highlighted on the canvas, with the subnet each one is in and the number found. Use **↑** and **↓** to move through the list and **Enter** to go to a match: Donwinne opens the right subnet page, zooms in to at least 100%, centres the view on it and makes it pulse briefly so it is easy to spot in a large net. **Select all N matches** (Alt+Enter) selects every match on the current page, for example to colour or move them together. **Esc** closes the box.
 
 ## Notes and colours
 
@@ -332,7 +336,7 @@ The properties panel shows the details of what is selected. On a desktop it is d
 | Arc | Type; Weight (or Inscription in coloured nets); Remove N bend points; Reverse direction; Line colour. |
 | Note | Text and colour. |
 | Subnet | Name, Open subnet, Ungroup. |
-| Several items | Arrange buttons, colours, Group into subnet, Delete selection. |
+| Several items | Arrange buttons, colours, Group into subnet, Delete selection. When they are all places, all transitions or all arcs, their shared fields too (for example marking, capacity, rate, guard or weight): a field whose values differ shows *(mixed)*, and a change applies to all of them as one undo step. |
 | Fault tree node | Name, Type, k (k-of-n gates), Failure rate λ, Or a fixed probability, Repair rate μ (extended fault trees), colour, Comment. |
 
 Problems that concern the selected element are shown at the bottom of its properties. What each field means is explained in [Net classes](net-classes.md).
@@ -345,11 +349,11 @@ The bottom panel has tabs:
 | --- | --- | --- |
 | Problems | Always | Errors and warnings in the model, with counts on the tab. Click a problem to select the element. "✓ No problems found." when all is well. |
 | Elements | Petri nets | The element table and hierarchy (below). |
-| Token game, Timed token game or Step token game | When simulating | History, enabled transitions and the current marking. See [Simulation](simulation.md#the-token-game). |
+| Token game, Timed token game or Step token game | When simulating | History, enabled transitions, the transitions that cannot fire with the reason for each, and the current marking. See [Simulation](simulation.md#the-token-game). |
 | Simulate & plot | Stochastic, continuous and hybrid classes | Plots over time. See [Simulation](simulation.md#simulating-over-time). |
 | Fault tree analysis | Fault trees | See [Analysis](analysis.md#fault-tree-analysis). |
 
-Resize the panel by dragging its top edge, and fold it away with ▾ or B. Tabs with more content, such as plots, open taller.
+The panel starts folded to its row of tabs, so the canvas gets the room; the **Problems** tab still shows the error and warning counts. It opens when you click a tab, press B, start the token game, or try to simulate a model with errors. Resize it by dragging its top edge, and fold it away again with ▾ or B. Tabs with more content, such as plots, open taller.
 
 ### Element table and hierarchy
 
@@ -362,7 +366,7 @@ Resize the panel by dragging its top edge, and fold it away with ▾ or B. Tabs 
 - **Arcs:** From, To, Type and Weight (or Inscription).
 - **Hierarchy:** the tree of subnets (only when the net has subnets); click an entry to open it.
 
-Cells can be edited in place, and clicking a row selects the element on the canvas, opening its subnet if needed.
+Cells can be edited in place, and clicking a row selects the element on the canvas, opening its subnet if needed. Click a column heading to sort by it (again to reverse; numbers in names sort naturally, so P2 comes before P10). Ctrl-click (⌘-click on a Mac) adds a row to the selection and Shift-click selects a range. Large tables only draw the rows in view, so they stay quick.
 
 ## Undo, auto-save and themes
 
@@ -401,6 +405,7 @@ Shortcuts without Ctrl are ignored while you type in a text field. Ctrl means �
 | M | Overview map on or off |
 | B | Bottom panel on or off |
 | F | Zoom to fit |
+| Shift+F | Zoom to the selection |
 | Esc | Close the open dialog or menu |
 
 ### While editing
@@ -430,6 +435,7 @@ Shortcuts without Ctrl are ignored while you type in a text field. Ctrl means �
 | ← / → | Step back / step forward through the history |
 | R | Fire a random enabled transition (a random step in ambient nets) |
 | X | Fire a maximal step (ambient nets) |
+| T | Show or hide the [red token trail](simulation.md#the-red-token-trail-and-deadlocks) |
 | Space | Run or pause random firing |
 | Esc | Stop the token game |
 
@@ -461,8 +467,8 @@ The layout adapts to the size of the window:
 
 | Screen | Size | Layout |
 | --- | --- | --- |
-| Phone | up to 599 pixels wide | Menus in a drawer. The palette is a scrolling bar along the bottom, hidden while simulating. Properties open as a bottom sheet. Dialogs fill the screen. The bottom panel takes at most 45% of the height and starts folded away. |
-| Short (phone in landscape) | up to 499 pixels high | A narrow icon-only palette rail, full-screen dialogs, properties as a drawer, bottom panel folded away at start. |
+| Phone | up to 599 pixels wide | Menus in a drawer. The palette is a scrolling bar along the bottom, hidden while simulating. Properties open as a bottom sheet. Dialogs fill the screen. The bottom panel takes at most 45% of the height. |
+| Short (phone in landscape) | up to 499 pixels high | A narrow icon-only palette rail, full-screen dialogs, properties as a drawer. |
 | Tablet | up to 1023 pixels wide | Menus in a drawer (the class badge stays visible). A slim palette rail down the side. Properties open as a drawer. |
 | Desktop | wider | Menu bar, palette, docked properties panel and bottom panel. Very wide screens (1800 and 2400 pixels) get a wider properties panel and larger dialogs. |
 

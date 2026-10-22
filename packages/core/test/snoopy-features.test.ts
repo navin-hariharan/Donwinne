@@ -66,12 +66,12 @@ describe("modifier arcs", () => {
 
   it("must go from a place to a transition", () => {
     const n = net("stochastic", [["A", "1"]], [["t"]], [["t", "A", "", "modifier"]]);
-    expect(errors(n)).toContain("A modifier arc must go from a place to a transition");
+    expect(errors(n)).toContain("Arc t → A: a modifier arc must go from a place to a transition");
   });
 
   it("are flagged in classes without modifier arcs", () => {
     const n = net("xpt", [["A", "1"]], [["t"]], [["A", "t", "", "modifier"]]);
-    expect(warnings(n).some((w) => /Modifier arcs belong to stochastic/.test(w))).toBe(true);
+    expect(warnings(n).some((w) => /^Arc A → t: modifier arcs belong to stochastic/.test(w))).toBe(true);
   });
 });
 
@@ -231,7 +231,7 @@ describe("user functions", () => {
     ];
     n.declarations.constants.push({ name: "c", value: "missing(1)" });
     const errs = errors(n);
-    expect(errs).toContain("Arc A: hill takes 3 arguments but is called with 2");
+    expect(errs).toContain("Arc A → t: hill takes 3 arguments but is called with 2");
     expect(errs).toContain("Function loop calls itself, directly or through other functions (recursion is not allowed)");
     expect(errs).toContain("Function ping calls itself, directly or through other functions (recursion is not allowed)");
     expect(errs).toContain("Function pong calls itself, directly or through other functions (recursion is not allowed)");

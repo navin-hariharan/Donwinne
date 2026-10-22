@@ -355,6 +355,26 @@ describe("Concurrent reachability graph (Def. 5, eq. 3.1)", () => {
     const max = concurrentReachabilityGraph(n, { maximalOnly: true });
     expect(max.edges.every((e) => !(e.from === 2 && e.step.length === 1))).toBe(true);
   });
+
+  it("Def. 5: a state whose expansion was cut short is open, never a deadlock", () => {
+    const n = thesisFig6_3();
+    const full = concurrentReachabilityGraph(n);
+    expect(full.open).toEqual([]);
+    // Step enumeration stopped before any step was recorded: nothing is known about the successors.
+    const cut = concurrentReachabilityGraph(n, { maxStepsPerState: 0 });
+    expect(cut).toMatchObject({ complete: false, reason: "steps", deadlocks: [] });
+    expect(cut.open).toContain(0);
+    // The state limit drops successors of explored states, and leaves later states unexpanded.
+    const small = concurrentReachabilityGraph(n, { maxStates: 2 });
+    expect(small.deadlocks.every((s) => full.deadlocks.includes(full.keys.indexOf(small.keys[s])))).toBe(true);
+    expect(small.open.length).toBeGreaterThan(0);
+    const edges = concurrentReachabilityGraph(n, { maxEdges: 1 });
+    expect(edges.deadlocks).toEqual([]);
+    expect(edges.open).toEqual([1, 2]); // M0 has one step; M1 was cut off mid-way, M2 never expanded
+    const ac = new AbortController();
+    ac.abort();
+    expect(concurrentReachabilityGraph(n, { signal: ac.signal })).toMatchObject({ deadlocks: [], open: [0] });
+  });
 });
 
 describe("T-APN class and semantics (Def. 20, Sec. 5.2-5.3)", () => {

@@ -256,8 +256,8 @@ Rules of the store:
 | [Canvas.tsx](../packages/editor/src/Canvas.tsx), [NetDrawing.tsx](../packages/editor/src/NetDrawing.tsx), [Minimap.tsx](../packages/editor/src/Minimap.tsx), [InlineEditor.tsx](../packages/editor/src/InlineEditor.tsx), [ContextMenu.tsx](../packages/editor/src/ContextMenu.tsx) | Drawing and editing the net |
 | [PropertiesPanel.tsx](../packages/editor/src/PropertiesPanel.tsx), [PropsSheet.tsx](../packages/editor/src/PropsSheet.tsx), [Elements.tsx](../packages/editor/src/Elements.tsx) | Properties of the selection, the element table |
 | [BottomPanel.tsx](../packages/editor/src/BottomPanel.tsx), [Plot.tsx](../packages/editor/src/Plot.tsx), [AmbientSim.tsx](../packages/editor/src/AmbientSim.tsx) | Problems, simulation history, plots, fault tree results, the step token game |
-| [Dialogs.tsx](../packages/editor/src/Dialogs.tsx), [Analysis.tsx](../packages/editor/src/Analysis.tsx), [AmbientDialogs.tsx](../packages/editor/src/AmbientDialogs.tsx), [CtlDialog.tsx](../packages/editor/src/CtlDialog.tsx) | Dialogs: new model, help, search, reachability graph, net properties, the ambient dialogs, model checking |
-| [simulation.ts](../packages/editor/src/simulation.ts), [ambient.ts](../packages/editor/src/ambient.ts), [ctl.ts](../packages/editor/src/ctl.ts) | Token game logic, step token game logic, state spaces for model checking |
+| [Dialogs.tsx](../packages/editor/src/Dialogs.tsx), [Analysis.tsx](../packages/editor/src/Analysis.tsx), [AmbientDialogs.tsx](../packages/editor/src/AmbientDialogs.tsx), [CtlDialog.tsx](../packages/editor/src/CtlDialog.tsx), [RGGraph.tsx](../packages/editor/src/RGGraph.tsx) | Dialogs: new model, help, search, reachability graph (and its drawing), net properties, the ambient dialogs, model checking |
+| [simulation.ts](../packages/editor/src/simulation.ts), [ambient.ts](../packages/editor/src/ambient.ts), [ctl.ts](../packages/editor/src/ctl.ts), [trail.ts](../packages/editor/src/trail.ts) | Token game logic, step token game logic, state spaces for model checking, the red token trail |
 | [fileOps.ts](../packages/editor/src/fileOps.ts), [examples.ts](../packages/editor/src/examples.ts) | Open, save, import, export, print; the example models |
 | [layout.ts](../packages/editor/src/layout.ts), [geometry.ts](../packages/editor/src/geometry.ts), [responsive.ts](../packages/editor/src/responsive.ts), [music.ts](../packages/editor/src/music.ts) | Auto layout (elkjs), geometry, phone and tablet layouts, sound for music nets |
 | [platform.ts](../packages/editor/src/platform.ts) | The `DesktopBridge` interface, the `MenuCommand` union and `desktop()` |
@@ -380,9 +380,14 @@ The [Dockerfile](../Dockerfile) builds and serves the web app:
 1. **Build stage** (`node:22-alpine`): installs pnpm 10.28.0, skips the Electron download
    (`ELECTRON_SKIP_BINARY_DOWNLOAD=1`), installs only the web app's and the root's dependencies, then runs
    `pnpm test && pnpm --filter @pns/web build`. **The image is not built if a test fails.**
-2. **Serve stage** (`nginx:1.27-alpine`): copies `apps/web/dist` and [docker/nginx.conf](../docker/nginx.conf)
+2. **Serve stage** (`nginx:1.30-alpine`): copies `apps/web/dist` and [docker/nginx.conf](../docker/nginx.conf)
    (gzip; files under `/assets/` cached as immutable for a year; every other path falls back to `index.html`
    without caching). A `HEALTHCHECK` watches the server.
+3. **Security headers**: every response carries a Content Security Policy (scripts, styles, workers and
+   connections only from the app itself; no plugins, no framing, no `<base>` changes), plus
+   `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` and a
+   `Permissions-Policy` that turns off the camera, microphone, location, payment and USB. nginx forgets
+   inherited `add_header` lines in a location that adds its own, so each location repeats the full set.
 
 ```
 docker compose up --build      # then open http://localhost:8080
@@ -405,7 +410,7 @@ pnpm typecheck                              # types
 [vitest.config.ts](../vitest.config.ts) runs every `packages/*/test/**/*.test.ts` in the Node environment (the
 editor's tests drive the store and its logic without a browser), with the `@pns/*` aliases.
 
-The full suite has **29 test files and 556 tests**, and takes about 80 seconds; most of that is the thesis
+The full suite has **33 test files and 604 tests**, and takes about 80 seconds; most of that is the thesis
 reproduction in `thesis.test.ts`.
 
 ### What the tests cover

@@ -25,6 +25,8 @@ import { awayFrom, bendArcs, controlSystemPositions, nodePoints, normalise, plac
 export interface Check {
   ok: boolean;
   reason: string;
+  /** True when the answer is not decided (for example, the state space was not fully explored); `ok` is then false. */
+  unknown?: boolean;
 }
 
 /** One composition in a derivation of a composite step net. Ids of the places and step transitions. */

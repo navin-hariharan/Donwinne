@@ -161,13 +161,13 @@ export function replayTrace(steps: readonly TraceStep[]): boolean {
     const bs = t ? enabledBindings(cn, t.index, M).bindings : [];
     const b = bs.find((x) => Object.entries(x).every(([k, v]) => !parts.has(k) || parts.get(k) === showValue(v as never).replace(/\s+/g, ""))) ?? bs[0];
     if (!t || !b) {
-      useStore.setState({ sim, simIndex: sim.length - 1 });
+      useStore.setState({ sim, simIndex: sim.length - 1, trailFrom: 0 });
       return failed(ref?.name ?? "?");
     }
     M = fire(cn, t.index, b, M);
     sim.push({ marking: M, label: st.label, transitionId: t.id });
   }
-  useStore.setState({ sim, simIndex: sim.length - 1, panel: "simulation" });
+  useStore.setState({ sim, simIndex: sim.length - 1, trailFrom: 0, panel: "simulation" });
   return true;
 }
 

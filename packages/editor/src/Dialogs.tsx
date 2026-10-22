@@ -2,10 +2,10 @@ import { AnalysisDialog } from "./Analysis";
 import { ApnPropsDialog, BlocksDialog, ComposeDialog, CrgDialog, EquivalenceDialog, TapnDialog } from "./AmbientDialogs";
 import { CtlDialog } from "./CtlDialog";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Binding, Marking, NET_CLASS_LABELS, NetClass, enabledBindings, fire, initialMarking, markingKey, showBinding, showTokens } from "@pns/core";
-import { cmdOpen, cmdOpenExample } from "./fileOps";
+import { Binding, Marking, NET_CLASS_LABELS, NetClass, Point, enabledBindings, fire, initialMarking, markingKey, showBinding, showTokens } from "@pns/core";
+import { cmdOpen, cmdOpenExample, cmdOpenRecent } from "./fileOps";
 import { EXAMPLES } from "./examples";
-import { centerOn } from "./Canvas";
+import { RGGraph, RGNode, RG_GRAPH_LIMIT } from "./RGGraph";
 import { FTIcon, Icon, MOD } from "./Toolbar";
 import { compiled, enterPage, newNet, pagePath, select, startSimulation, toast, useStore } from "./store";
 
@@ -132,13 +132,60 @@ function ClassIcon({ c }: { c: NetClass }) {
 function NewNetDialog() {
   const dirty = useStore((s) => s.dirty);
   const hasContent = useStore((s) => s.net.places.length + s.net.transitions.length + (s.net.faultTree?.nodes.length ?? 0) > 0);
+  const recent = useStore((s) => s.recentFiles);
+  const [showExamples, setShowExamples] = useState(false);
   const choose = (c: NetClass) => {
     if (dirty && hasContent && !window.confirm("Discard unsaved changes?")) return;
     newNet(c);
     useStore.setState({ dialog: null, seenWelcome: true });
   };
+  const chooseRef = useRef(choose);
+  chooseRef.current = choose;
+  // Enter starts a P/T net, unless a button or field has the focus and Enter belongs to it.
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if ((e.target as HTMLElement).closest?.("button, input, select, textarea, a")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      chooseRef.current("pt");
+    };
+    window.addEventListener("keydown", k, true);
+    return () => window.removeEventListener("keydown", k, true);
+  }, []);
+  const leaveThen = (fn: () => void) => () => {
+    useStore.setState({ dialog: null, seenWelcome: true });
+    fn();
+  };
   return (
     <Modal title="Create a new model" onClose={() => useStore.setState({ dialog: null, seenWelcome: true })} wide>
+      <div className="start-row">
+        <button onClick={leaveThen(() => void cmdOpen())} data-testid="start-open">
+          Open…
+        </button>
+        <button className={showExamples ? "on" : ""} aria-expanded={showExamples} onClick={() => setShowExamples(!showExamples)} data-testid="start-examples">
+          Examples {showExamples ? "▴" : "▾"}
+        </button>
+        {recent.length > 0 && <span className="start-label">Recent</span>}
+        {recent.map((r) => (
+          <button key={r.key} className="start-recent" title={`${r.name}, as last opened or saved ${new Date(r.time).toLocaleString()}`} onClick={leaveThen(() => cmdOpenRecent(r))}>
+            {r.name}
+          </button>
+        ))}
+        <span className="start-hint muted small">
+          Press <kbd>Enter</kbd> for a place/transition net
+        </span>
+      </div>
+      {showExamples && (
+        <div className="gallery-row start-examples">
+          {EXAMPLES.map((ex) => (
+            <button key={ex.title} className="class-card compact" onClick={leaveThen(() => cmdOpenExample(ex.net))}>
+              <strong>{ex.title}</strong>
+              <span>Example</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="gallery">
         {GROUPS.map((g) => (
           <section key={g.title}>
@@ -161,29 +208,6 @@ function NewNetDialog() {
               <strong>Ambient building blocks…</strong>
               <span>An APN from a root net or step net</span>
             </button>
-            <button
-              className="class-card compact"
-              onClick={() => {
-                useStore.setState({ dialog: null });
-                void cmdOpen();
-              }}
-            >
-              <strong>Open a file…</strong>
-              <span>Donwinne, Snoopy, PNML, ANDL</span>
-            </button>
-            {EXAMPLES.map((ex) => (
-              <button
-                key={ex.title}
-                className="class-card compact"
-                onClick={() => {
-                  useStore.setState({ dialog: null, seenWelcome: true });
-                  cmdOpenExample(ex.net);
-                }}
-              >
-                <strong>{ex.title}</strong>
-                <span>Example</span>
-              </button>
-            ))}
           </div>
         </section>
       </div>
@@ -214,8 +238,10 @@ const SHORTCUTS: [string, string][] = [
   ["Space+drag · right-drag", "Pan"],
   [`${MOD}wheel · pinch`, "Zoom"],
   ["F · M · G · B", "Zoom to fit, overview map, snap to grid, bottom panel"],
+  ["⇧F", "Zoom to the selection (the whole net when nothing is selected)"],
   ["S", "Start the token game"],
   ["← → · R · Space · Esc", "In the token game: back, forward, random, run, stop"],
+  ["T", "In the token game: show or hide the red token trail"],
   ["X", "Step token game: fire a maximal step"],
 ];
 
@@ -355,8 +381,35 @@ interface Hit {
   y: number;
 }
 
+/**
+ * Centre the canvas on a world point at 100% zoom or closer, in the part of the canvas the find box
+ * does not cover when there is room below it.
+ */
+function showAt(p: Point) {
+  const v = useStore.getState().view;
+  const el = document.querySelector<SVGSVGElement>("svg.canvas");
+  const r = el?.getBoundingClientRect() ?? { top: 0, width: 800, height: 600 };
+  const pop = document.querySelector(".search-pop")?.getBoundingClientRect();
+  const below = pop ? pop.bottom - r.top : 0;
+  const cy = below > 0 && r.height - below >= 160 ? below + (r.height - below) / 2 : r.height / 2;
+  const zoom = Math.max(1, v.zoom);
+  useStore.setState({ view: { zoom, x: r.width / 2 - p.x * zoom, y: cy - p.y * zoom } });
+}
+
+/** Briefly pulse an element on the canvas so the eye finds it. */
+function pulse(id: string) {
+  const g = document.querySelector(`svg.canvas [data-id="${CSS.escape(id)}"]`);
+  if (!g) return;
+  // Taking the class off and reading layout restarts the animation when it is still running.
+  g.classList.remove("find-pulse");
+  void g.getBoundingClientRect();
+  g.classList.add("find-pulse");
+  setTimeout(() => g.classList.remove("find-pulse"), 1600);
+}
+
 function SearchDialog() {
   const net = useStore((s) => s.net);
+  const page = useStore((s) => s.page);
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -379,8 +432,10 @@ function SearchDialog() {
         const d = net.places.find((p) => p.id === a.target) ?? net.transitions.find((t) => t.id === a.target);
         if (s && d) out.push({ id: a.id, kind: "Arc", name: `${s.name} → ${d.name}`, detail: a.inscription, page: s.parent ?? null, x: (s.x + d.x) / 2, y: (s.y + d.y) / 2 });
       }
-    return out.slice(0, 200);
+    return out;
   }, [q, net]);
+  const shown = hits.slice(0, 200);
+  const onPage = hits.filter((h) => h.page === page);
 
   useEffect(() => {
     useStore.setState({ highlight: hits.map((h) => h.id) });
@@ -391,7 +446,16 @@ function SearchDialog() {
   const go = (h: Hit) => {
     if (useStore.getState().page !== h.page) enterPage(h.page);
     select([h.id]);
-    requestAnimationFrame(() => centerOn({ x: h.x, y: h.y }));
+    // Let a page switch's fit run first, then zoom in on the match.
+    requestAnimationFrame(() => {
+      showAt({ x: h.x, y: h.y });
+      requestAnimationFrame(() => pulse(h.id));
+    });
+  };
+  const selectAllHits = () => {
+    select(onPage.map((h) => h.id));
+    close();
+    toast(`Selected ${onPage.length} match${onPage.length === 1 ? "" : "es"}`);
   };
 
   return (
@@ -406,20 +470,31 @@ function SearchDialog() {
           onKeyDown={(e) => {
             e.stopPropagation();
             if (e.key === "Escape") close();
-            if (e.key === "ArrowDown") (e.preventDefault(), setActive(Math.min(hits.length - 1, active + 1)));
+            if (e.key === "ArrowDown") (e.preventDefault(), setActive(Math.min(shown.length - 1, active + 1)));
             if (e.key === "ArrowUp") (e.preventDefault(), setActive(Math.max(0, active - 1)));
-            if (e.key === "Enter" && hits[active]) go(hits[active]);
+            if (e.key === "Enter" && e.altKey && onPage.length) selectAllHits();
+            else if (e.key === "Enter" && shown[active]) go(shown[active]);
           }}
           data-testid="search-input"
         />
         <span className="muted small">{q ? `${hits.length} found` : ""}</span>
+        {onPage.length > 1 && (
+          <button
+            className="small"
+            onClick={selectAllHits}
+            title={`Select every match on this page (Alt+Enter)${onPage.length < hits.length ? `; ${hits.length - onPage.length} more are on other pages` : ""}`}
+            data-testid="search-select-all"
+          >
+            Select all {onPage.length} matches
+          </button>
+        )}
         <button className="icon" aria-label="Close" onClick={close}>
           ✕
         </button>
       </div>
-      {hits.length > 0 && (
+      {shown.length > 0 && (
         <ul className="search-results">
-          {hits.map((h, i) => (
+          {shown.map((h, i) => (
             <li key={h.id} className={i === active ? "on" : ""} onMouseEnter={() => setActive(i)} onClick={() => go(h)}>
               <span className="kind">{h.kind}</span>
               <span className="name">{h.name}</span>
@@ -531,6 +606,21 @@ function ReachabilityDialog() {
 
   const placeCols = cn.places.filter((p, i, arr) => arr.findIndex((q) => q.slot === p.slot) === i);
   const showRows = rg ? rg.states.slice(0, 300) : [];
+  // Small graphs are easiest to read drawn; big ones as a table.
+  const [view, setView] = useState<"graph" | "table" | null>(null);
+  const shownView = view ?? (rg && rg.states.length <= RG_GRAPH_LIMIT ? "graph" : "table");
+  const graph = useMemo(() => {
+    if (!rg) return null;
+    const nodes: RGNode[] = rg.states.slice(0, RG_GRAPH_LIMIT).map((M, i) => ({
+      name: i === 0 ? "M0" : `M${i}`,
+      text: placeCols
+        .filter((p) => M[p.slot].size > 0)
+        .map((p) => (cn.coloured ? `${p.name}:${showTokens(cn, M[p.slot])}` : M[p.slot].size === 1 ? p.name : `${p.name}:${M[p.slot].size}`))
+        .join(" "),
+      dead: rg.dead.includes(i),
+    }));
+    return { nodes, edges: rg.edges.map((e) => ({ from: e.from, to: e.to, label: e.label })) };
+  }, [rg]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <Modal title="Reachability graph" onClose={close} wide>
       <div className="rg-head">
@@ -567,8 +657,19 @@ function ReachabilityDialog() {
               <span>deadlock-free</span>
             </div>
           </div>
-          <p className="muted small">Click a state to replay the path to it in the token game. Dead states are marked.</p>
-          <div className="rg-table-wrap">
+          <div className="rg-head">
+            <p className="muted small">Click a state to replay the path to it in the token game. Dead states are marked{shownView === "graph" ? " in red; M0 is the initial marking" : ""}.</p>
+            <div className="seg rg-view" role="group" aria-label="Show as">
+              <button className={`small ${shownView === "graph" ? "on" : ""}`} aria-pressed={shownView === "graph"} onClick={() => setView("graph")} data-testid="rg-view-graph">
+                Graph
+              </button>
+              <button className={`small ${shownView === "table" ? "on" : ""}`} aria-pressed={shownView === "table"} onClick={() => setView("table")} data-testid="rg-view-table">
+                Table
+              </button>
+            </div>
+          </div>
+          {shownView === "graph" && graph && <RGGraph nodes={graph.nodes} edges={graph.edges} onPick={showState} />}
+          {shownView === "table" && <div className="rg-table-wrap">
             <table className="rg-table">
               <thead>
                 <tr>
@@ -600,7 +701,7 @@ function ReachabilityDialog() {
               </tbody>
             </table>
             {rg.states.length > showRows.length && <p className="muted small">Showing the first {showRows.length} states.</p>}
-          </div>
+          </div>}
         </>
       )}
     </Modal>

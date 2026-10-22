@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Net, isColoured, isFaultTree, timeBase } from "@pns/core";
 import { enterPage, select, updateArc, updatePlace, updateTransition, useStore } from "./store";
 import { centerOn } from "./Canvas";
@@ -25,9 +25,37 @@ function pageName(net: Net, parent: string | undefined): string {
   return net.places.find((p) => p.id === parent)?.name ?? net.transitions.find((t) => t.id === parent)?.name ?? "";
 }
 
+interface Sort {
+  key: string;
+  desc: boolean;
+}
+
+type SortValue = string | number | undefined;
+
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
+/** Numbers compare as numbers, everything else as text with digit runs compared by value (P2 before P10). */
+export function compareValues(a: SortValue, b: SortValue): number {
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  return collator.compare(String(a ?? ""), String(b ?? ""));
+}
+
+/** A stable sort of `rows` by one column. */
+export function sortRows<T>(rows: T[], value: ((x: T) => SortValue) | null | undefined, desc: boolean): T[] {
+  if (!value) return rows;
+  const keyed = rows.map((x, i) => ({ x, i, v: value(x) }));
+  keyed.sort((a, b) => (desc ? compareValues(b.v, a.v) : compareValues(a.v, b.v)) || a.i - b.i);
+  return keyed.map((k) => k.x);
+}
+
+/** Past this many rows only the rows in view are rendered. */
+const WINDOW_FROM = 150;
+const OVERSCAN = 12;
+
 /**
  * Every place, transition and arc in one sortable, filterable table, with the common fields
- * editable in place (Snoopy's "edit as table"), plus the subnet hierarchy.
+ * editable in place (Snoopy's "edit as table"), plus the subnet hierarchy. Click a header to sort;
+ * Ctrl/Cmd-click rows to add or remove them from the selection, Shift-click to select a range.
  */
 export function ElementsPanel() {
   const net = useStore((s) => s.net);
@@ -35,6 +63,13 @@ export function ElementsPanel() {
   const readOnly = useStore((s) => s.mode !== "edit");
   const [kind, setKind] = useState<Kind>("places");
   const [filter, setFilter] = useState("");
+  const [sort, setSort] = useState<Sort | null>(null);
+  const anchor = useRef<string | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const firstRow = useRef<HTMLTableRowElement>(null);
+  const [view, setView] = useState({ top: 0, height: 600 });
+  const [rowH, setRowH] = useState(27);
+  const ft = isFaultTree(net.netClass);
   const coloured = isColoured(net.netClass);
   const tb = timeBase(net.netClass);
   const hasHierarchy = net.places.some((p) => p.coarse) || net.transitions.some((t) => t.coarse);
@@ -43,12 +78,119 @@ export function ElementsPanel() {
   const match = (...xs: (string | undefined)[]) => !f || xs.some((x) => x?.toLowerCase().includes(f));
   const nameOf = useMemo(() => new Map([...net.places, ...net.transitions].map((n) => [n.id, n.name])), [net]);
 
-  if (isFaultTree(net.netClass)) return <div className="empty">The element table is for Petri nets. Use the fault tree analysis tab for fault trees.</div>;
+  useEffect(() => {
+    setSort(null);
+    anchor.current = null;
+    if (bodyRef.current) bodyRef.current.scrollTop = 0;
+  }, [kind]);
 
-  const places = net.places.filter((p) => !p.coarse && match(p.name, p.marking, p.colourSet, p.comment));
-  const transitions = net.transitions.filter((t) => !t.coarse && match(t.name, t.rate, t.guard, t.comment));
-  const arcs = net.arcs.filter((a) => match(nameOf.get(a.source), nameOf.get(a.target), a.inscription, a.kind));
-  const row = (id: string) => ({ className: sel.has(id) ? "on" : "", onClick: (e: React.MouseEvent) => (e.target as HTMLElement).tagName !== "INPUT" && revealElement(id) });
+  // Track the visible part of the table for windowing.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const update = () => setView({ top: el.scrollTop, height: el.clientHeight });
+    update();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [ft]);
+
+  // Rows have one height; measure it once rows are drawn so the spacers match.
+  useLayoutEffect(() => {
+    const h = firstRow.current?.getBoundingClientRect().height;
+    if (h && Math.abs(h - rowH) > 0.5) setRowH(h);
+  });
+
+  if (ft) return <div className="empty">The element table is for Petri nets. Use the fault tree analysis tab for fault trees.</div>;
+
+  const markingValue = (m: string) => (m.trim() === "" ? "0" : m);
+  const placeCols: Record<string, (p: Net["places"][number]) => SortValue> = {
+    name: (p) => p.name,
+    marking: (p) => markingValue(p.marking),
+    colourSet: (p) => p.colourSet ?? "Dot",
+    capacity: (p) => p.capacity ?? Infinity,
+    subnet: (p) => pageName(net, p.parent),
+    comment: (p) => p.comment,
+  };
+  const transitionCols: Record<string, (t: Net["transitions"][number]) => SortValue> = {
+    name: (t) => t.name,
+    kind: (t) => t.kind ?? (tb === "continuous" ? "continuous" : "stochastic"),
+    rate: (t) => t.rate,
+    guard: (t) => t.guard,
+    interval: (t) => `${t.interval?.[0] ?? "0"} ${t.interval?.[1] ?? "inf"}`,
+    subnet: (t) => pageName(net, t.parent),
+    comment: (t) => t.comment,
+  };
+  const arcCols: Record<string, (a: Net["arcs"][number]) => SortValue> = {
+    from: (a) => nameOf.get(a.source),
+    to: (a) => nameOf.get(a.target),
+    type: (a) => ARC_KIND_INFO[a.kind].label,
+    weight: (a) => (a.kind === "reset" || a.kind === "modifier" ? "" : a.inscription),
+  };
+
+  const desc = !!sort?.desc;
+  const places = sortRows(
+    net.places.filter((p) => !p.coarse && match(p.name, p.marking, p.colourSet, p.comment)),
+    sort && placeCols[sort.key],
+    desc,
+  );
+  const transitions = sortRows(
+    net.transitions.filter((t) => !t.coarse && match(t.name, t.rate, t.guard, t.comment)),
+    sort && transitionCols[sort.key],
+    desc,
+  );
+  const arcs = sortRows(
+    net.arcs.filter((a) => match(nameOf.get(a.source), nameOf.get(a.target), a.inscription, a.kind)),
+    sort && arcCols[sort.key],
+    desc,
+  );
+  const rows: { id: string }[] = kind === "places" ? places : kind === "transitions" ? transitions : kind === "arcs" ? arcs : [];
+  const ordered = rows.map((r) => r.id);
+
+  // Windowing: draw only the rows in view (plus a margin) between two spacer rows.
+  const windowed = rows.length > WINDOW_FROM;
+  const start = windowed ? Math.max(0, Math.floor(view.top / rowH) - OVERSCAN) : 0;
+  const end = windowed ? Math.min(rows.length, Math.ceil((view.top + view.height) / rowH) + OVERSCAN) : rows.length;
+  const visible = <T,>(xs: T[]) => xs.slice(start, end);
+  const spacer = (n: number) =>
+    n > 0 && (
+      <tr className="spacer" aria-hidden="true">
+        <td colSpan={99} style={{ height: n * rowH }} />
+      </tr>
+    );
+
+  const onRowClick = (id: string) => (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).tagName === "INPUT") return;
+    const add = e.ctrlKey || e.metaKey;
+    if (e.shiftKey && anchor.current && ordered.includes(anchor.current)) {
+      const i = ordered.indexOf(anchor.current);
+      const j = ordered.indexOf(id);
+      const range = ordered.slice(Math.min(i, j), Math.max(i, j) + 1);
+      select(add ? [...new Set([...selection, ...range])] : range);
+      return;
+    }
+    anchor.current = id;
+    if (add) select(sel.has(id) ? selection.filter((x) => x !== id) : [...selection, id]);
+    else revealElement(id);
+  };
+  const row = (id: string, i: number) => ({
+    ref: i === 0 ? firstRow : undefined,
+    className: sel.has(id) ? "on" : "",
+    // Keep Shift-click from selecting the table's text.
+    onMouseDown: (e: React.MouseEvent) => e.shiftKey && (e.target as HTMLElement).tagName !== "INPUT" && e.preventDefault(),
+    onClick: onRowClick(id),
+  });
+  const th = (key: string, label: React.ReactNode) => {
+    const on = sort?.key === key;
+    return (
+      <th aria-sort={on ? (sort.desc ? "descending" : "ascending") : "none"}>
+        <button className="th-sort" onClick={() => setSort(on ? { key, desc: !sort.desc } : { key, desc: false })} title="Sort by this column">
+          {label}
+          <span className="sort-mark">{on ? (sort.desc ? "▼" : "▲") : ""}</span>
+        </button>
+      </th>
+    );
+  };
 
   return (
     <div className="elements">
@@ -62,23 +204,25 @@ export function ElementsPanel() {
           ))}
         </div>
         {kind !== "hierarchy" && <input className="elements-filter" placeholder="Filter…" aria-label="Filter elements" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+        {kind !== "hierarchy" && selection.length > 1 && <span className="muted small">{selection.length} selected</span>}
       </div>
-      <div className="elements-body">
+      <div className="elements-body" ref={bodyRef} onScroll={(e) => setView({ top: e.currentTarget.scrollTop, height: e.currentTarget.clientHeight })}>
         {kind === "places" && (
-          <table className="grid-table">
+          <table className={`grid-table${windowed ? " windowed" : ""}`}>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>{tb === "continuous" ? "Initial amount" : "Initial marking"}</th>
-                {coloured && <th>Colour set</th>}
-                <th>Capacity</th>
-                {hasHierarchy && <th>Subnet</th>}
-                <th>Comment</th>
+                {th("name", "Name")}
+                {th("marking", tb === "continuous" ? "Initial amount" : "Initial marking")}
+                {coloured && th("colourSet", "Colour set")}
+                {th("capacity", "Capacity")}
+                {hasHierarchy && th("subnet", "Subnet")}
+                {th("comment", "Comment")}
               </tr>
             </thead>
             <tbody>
-              {places.map((p) => (
-                <tr key={p.id} {...row(p.id)}>
+              {spacer(start)}
+              {visible(places).map((p, i) => (
+                <tr key={p.id} {...row(p.id, i)}>
                   <td>
                     <input aria-label="Name" disabled={readOnly} value={p.name} onChange={(e) => updatePlace(p.id, { name: e.target.value }, `tbl-${p.id}-n`)} />
                   </td>
@@ -103,25 +247,27 @@ export function ElementsPanel() {
                   </td>
                 </tr>
               ))}
+              {spacer(places.length - end)}
             </tbody>
           </table>
         )}
         {kind === "transitions" && (
-          <table className="grid-table">
+          <table className={`grid-table${windowed ? " windowed" : ""}`}>
             <thead>
               <tr>
-                <th>Name</th>
-                {tb && <th>Kind</th>}
-                {tb && <th>Rate / weight / delay</th>}
-                {coloured && <th>Guard</th>}
-                {net.netClass === "timed" && <th>Interval</th>}
-                {hasHierarchy && <th>Subnet</th>}
-                <th>Comment</th>
+                {th("name", "Name")}
+                {tb && th("kind", "Kind")}
+                {tb && th("rate", "Rate / weight / delay")}
+                {coloured && th("guard", "Guard")}
+                {net.netClass === "timed" && th("interval", "Interval")}
+                {hasHierarchy && th("subnet", "Subnet")}
+                {th("comment", "Comment")}
               </tr>
             </thead>
             <tbody>
-              {transitions.map((t) => (
-                <tr key={t.id} {...row(t.id)}>
+              {spacer(start)}
+              {visible(transitions).map((t, i) => (
+                <tr key={t.id} {...row(t.id, i)}>
                   <td>
                     <input aria-label="Name" disabled={readOnly} value={t.name} onChange={(e) => updateTransition(t.id, { name: e.target.value }, `tbl-${t.id}-n`)} />
                   </td>
@@ -147,22 +293,24 @@ export function ElementsPanel() {
                   </td>
                 </tr>
               ))}
+              {spacer(transitions.length - end)}
             </tbody>
           </table>
         )}
         {kind === "arcs" && (
-          <table className="grid-table">
+          <table className={`grid-table${windowed ? " windowed" : ""}`}>
             <thead>
               <tr>
-                <th>From</th>
-                <th>To</th>
-                <th>Type</th>
-                <th>{coloured ? "Inscription" : "Weight"}</th>
+                {th("from", "From")}
+                {th("to", "To")}
+                {th("type", "Type")}
+                {th("weight", coloured ? "Inscription" : "Weight")}
               </tr>
             </thead>
             <tbody>
-              {arcs.map((a) => (
-                <tr key={a.id} {...row(a.id)}>
+              {spacer(start)}
+              {visible(arcs).map((a, i) => (
+                <tr key={a.id} {...row(a.id, i)}>
                   <td>{nameOf.get(a.source)}</td>
                   <td>{nameOf.get(a.target)}</td>
                   <td className="muted">{ARC_KIND_INFO[a.kind].label}</td>
@@ -175,13 +323,12 @@ export function ElementsPanel() {
                   </td>
                 </tr>
               ))}
+              {spacer(arcs.length - end)}
             </tbody>
           </table>
         )}
         {kind === "hierarchy" && <HierarchyTree net={net} />}
-        {kind !== "hierarchy" && (kind === "places" ? places : kind === "transitions" ? transitions : arcs).length === 0 && (
-          <div className="empty">{f ? "Nothing matches the filter." : `No ${kind} yet.`}</div>
-        )}
+        {kind !== "hierarchy" && rows.length === 0 && <div className="empty">{f ? "Nothing matches the filter." : `No ${kind} yet.`}</div>}
       </div>
     </div>
   );

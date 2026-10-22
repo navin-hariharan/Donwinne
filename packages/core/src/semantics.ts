@@ -453,38 +453,41 @@ export function compile(fullNet: Net): CompiledNet {
     }
   };
 
+  const nodeName = (id: string) => net.places.find((p) => p.id === id)?.name ?? net.transitions.find((t) => t.id === id)?.name ?? id;
   const seenPairs = new Map<string, ArcKind[]>();
   for (const a of net.arcs) {
     const sp = placeById.get(a.source);
     const st = tById.get(a.source);
     const tp = placeById.get(a.target);
     const tt = tById.get(a.target);
+    // Messages name the arc by its ends, as the user sees them; the id stays in elementId.
+    const arcName = `Arc ${(sp ?? st)?.name ?? nodeName(a.source)} → ${(tp ?? tt)?.name ?? nodeName(a.target)}`;
     if (!((sp && tt) || (st && tp))) {
-      problems.push({ severity: "error", message: "An arc must connect a place and a transition", elementId: a.id });
+      problems.push({ severity: "error", message: `${arcName} must connect a place and a transition`, elementId: a.id });
       continue;
     }
     if (st && a.kind !== "normal") {
-      problems.push({ severity: "error", message: `${/^[aeiou]/.test(a.kind) ? "An" : "A"} ${a.kind} arc must go from a place to a transition`, elementId: a.id });
+      problems.push({ severity: "error", message: `${arcName}: ${/^[aeiou]/.test(a.kind) ? "an" : "a"} ${a.kind} arc must go from a place to a transition`, elementId: a.id });
       continue;
     }
     if (a.kind !== "normal" && net.netClass === "pt") {
-      problems.push({ severity: "warning", message: `${cap(a.kind)} arcs belong to extended nets; switch the net class to use them`, elementId: a.id });
+      problems.push({ severity: "warning", message: `${arcName}: ${a.kind} arcs belong to extended nets; switch the net class to use them`, elementId: a.id });
     } else if (a.kind === "modifier" && !arcKindsFor(net.netClass).includes("modifier")) {
       problems.push({
         severity: "warning",
-        message: "Modifier arcs belong to stochastic, continuous and hybrid nets; here they have no effect",
+        message: `${arcName}: modifier arcs belong to stochastic, continuous and hybrid nets; here they have no effect`,
         elementId: a.id,
       });
     }
     const pairKey = `${a.source}>${a.target}`;
     const kinds = seenPairs.get(pairKey) ?? [];
-    if (kinds.includes(a.kind)) problems.push({ severity: "warning", message: "Two arcs of the same kind join the same nodes", elementId: a.id });
+    if (kinds.includes(a.kind)) problems.push({ severity: "warning", message: `${arcName}: another arc of the same kind joins the same nodes`, elementId: a.id });
     seenPairs.set(pairKey, [...kinds, a.kind]);
 
     // Modifier arcs neither test nor change the marking; an inscription only selects colours (unfolding).
     const insc = a.inscription.trim() || (a.kind === "reset" || a.kind === "modifier" ? "" : "1");
     let expr: Expr | null = null;
-    if (insc) expr = parseOrReport(insc, `Arc ${sp?.name ?? tp?.name}`, a.id);
+    if (insc) expr = parseOrReport(insc, arcName, a.id);
     // A constant weight must be a whole number of at least 1 (marking-dependent weights are checked when firing).
     if (expr && !coloured && a.kind !== "reset" && a.kind !== "modifier") {
       let w: Value | undefined;
@@ -495,10 +498,10 @@ export function compile(fullNet: Net): CompiledNet {
       }
       if (typeof w === "number") {
         const cont = !!(sp ?? tp)?.continuous;
-        if (w < 0) problems.push({ severity: "error", message: `Arc ${(sp ?? st)!.name} → ${(tt ?? tp)!.name}: the weight ${w} is negative`, elementId: a.id });
-        else if (w === 0) problems.push({ severity: "warning", message: `An arc with weight 0 has no effect`, elementId: a.id });
+        if (w < 0) problems.push({ severity: "error", message: `${arcName}: the weight ${w} is negative`, elementId: a.id });
+        else if (w === 0) problems.push({ severity: "warning", message: `${arcName}: weight 0 has no effect`, elementId: a.id });
         else if (!cont && !Number.isInteger(w) && net.netClass !== "freestyle")
-          problems.push({ severity: "error", message: `Arc weights move whole tokens; ${w} is not a whole number`, elementId: a.id });
+          problems.push({ severity: "error", message: `${arcName}: arc weights move whole tokens; ${w} is not a whole number`, elementId: a.id });
       }
     }
     if (sp && tt) tt.inputs.push({ arc: a, place: sp, expr });
@@ -623,10 +626,6 @@ function checkObservers(net: Net, functions: Map<string, UserFunction>, declared
           }${o.kind === "transition" && placeNames.has(id) ? " (places belong in place observers)" : ""}`,
         });
   }
-}
-
-function cap(s: string) {
-  return s[0].toUpperCase() + s.slice(1);
 }
 
 function colourCall(name: string, args: Value[], sets: Map<string, Value[]>, enums: Map<string, string>): Value | undefined {
@@ -876,6 +875,70 @@ export function enabledBindings(cn: CompiledNet, tIndex: number, M: Marking): En
     return { bindings: out, error: (e as Error).message };
   }
   return { bindings: out };
+}
+
+/**
+ * Why a transition is not enabled at M, in words a student can act on, e.g. "buffer has 0 tokens,
+ * needs 1". Empty when it is enabled. For transitions with variables the reasons are given for the
+ * binding that came closest when there are few bindings, or summarised otherwise.
+ */
+export function disabledReasons(cn: CompiledNet, tIndex: number, M: Marking): string[] {
+  const t = cn.transitions[tIndex];
+  try {
+    if (enabledBindings(cn, tIndex, M).bindings.length) return [];
+    const show = (m: Multiset) => (cn.coloured ? m.toString() : String(m.size));
+    const tokens = (n: number) => `${n} token${n === 1 ? "" : "s"}`;
+    const reasonsFor = (binding: Binding): string[] => {
+      const out: string[] = [];
+      if (t.guard && !bool(evaluate(t.guard, envFor(cn, binding, M)))) out.push("its guard is false");
+      const need = new Map<number, { place: CPlace; ms: Multiset }>();
+      for (const a of t.inputs) {
+        const have = M[a.place.slot];
+        if (a.arc.kind === "reset" || a.arc.kind === "modifier") continue;
+        const ms = arcMultiset(cn, a, binding, M);
+        if (a.arc.kind === "normal") {
+          const prev = need.get(a.place.slot);
+          need.set(a.place.slot, { place: a.place, ms: prev ? prev.ms.plus(ms) : ms });
+        } else if (a.arc.kind === "read" && !ms.leq(have)) out.push(`${a.place.name} has ${cn.coloured ? show(have) || "no tokens" : tokens(have.size)}, the read arc needs ${show(ms)}`);
+        else if (a.arc.kind === "inhibitor") {
+          for (const [c, n] of ms.entries())
+            if (have.count(c) >= n) {
+              out.push(`the inhibitor arc from ${a.place.name} blocks it: ${a.place.name} has ${cn.coloured ? `${have.count(c)} of ${showValue(c)}` : tokens(have.size)}, it must have fewer than ${n}`);
+              break;
+            }
+        } else if (a.arc.kind === "equal" && (cn.coloured ? !have.equals(ms) : have.size !== ms.size))
+          out.push(`${a.place.name} has ${cn.coloured ? show(have) || "no tokens" : tokens(have.size)}, the equal arc needs exactly ${show(ms)}`);
+      }
+      if (!cn.modulus)
+        for (const { place, ms } of need.values()) {
+          const have = M[place.slot];
+          if (!ms.leq(have)) out.push(`${place.name} has ${cn.coloured ? show(have) || "no tokens" : tokens(have.size)}, needs ${cn.coloured ? show(ms) : ms.size}`);
+        }
+      if (!out.length && !cn.modulus) {
+        // Every input condition holds, so firing must overfill a place with a capacity.
+        const next = M.slice();
+        for (const { place, ms } of need.values()) next[place.slot] = next[place.slot].minus(ms);
+        for (const a of t.inputs) if (a.arc.kind === "reset") next[a.place.slot] = new Multiset();
+        for (const a of t.outputs) next[a.place.slot] = next[a.place.slot].plus(arcMultiset(cn, a, binding, M));
+        for (const a of t.outputs)
+          for (const p of cn.slotPlaces[a.place.slot]) {
+            const m = next[p.slot];
+            if (p.capacity !== undefined && (cn.coloured ? exceedsCapacity(m, p.capacity) : m.size > p.capacity) && !out.some((r) => r.includes(` ${p.name} `)))
+              out.push(`firing would put ${cn.coloured ? m.toString() : tokens(m.size)} on ${p.name}, over its capacity of ${p.capacity}`);
+          }
+      }
+      return out;
+    };
+    if (!t.variables.length) return reasonsFor({});
+    const cands = candidates(cn, t, M);
+    const empty = cands.filter((v) => !v.values.length).map((v) => v.name);
+    if (empty.length) return [`no tokens on its input places give a value for ${empty.join(", ")}`];
+    const all = [...bindings(cands)];
+    if (all.length === 1) return reasonsFor(all[0]);
+    return [`none of its ${all.length} bindings satisfies the guard and the arcs`];
+  } catch (e) {
+    return [(e as Error).message];
+  }
 }
 
 export function isEnabled(cn: CompiledNet, tIndex: number, M: Marking): boolean {

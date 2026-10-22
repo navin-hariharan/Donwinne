@@ -152,11 +152,12 @@ export function liveTransitions(net: Net, graph: StateGraph = reachabilityGraph(
 
 /** Def. 14: is the net live (every transition live)? */
 export function isLive(net: Net, graph: StateGraph = reachabilityGraph(net)): Check {
+  // Liveness depends on every reachable marking, so a partial graph decides nothing either way.
+  if (!graph.complete) return { ok: false, unknown: true, reason: `Not decided: the state space was not fully explored (${graph.markings.length.toLocaleString("en")} markings so far)` };
   const live = liveTransitions(net, graph);
   const dead = [...live].filter(([, ok]) => !ok).map(([id]) => net.transitions.find((t) => t.id === id)!.name);
-  const part = graph.complete ? "" : " (in the explored part of the state space)";
-  if (dead.length) return { ok: false, reason: `Not live${part}: ${dead.slice(0, 5).join(", ")}${dead.length > 5 ? " and others" : ""} can stop being fireable (Def. 14)` };
-  return { ok: true, reason: `Live${part}: every transition can always become enabled again (Def. 14)` };
+  if (dead.length) return { ok: false, reason: `Not live: ${dead.slice(0, 5).join(", ")}${dead.length > 5 ? " and others" : ""} can stop being fireable (Def. 14)` };
+  return { ok: true, reason: `Live: every transition can always become enabled again (Def. 14)` };
 }
 
 /** Def. 15: is the marking with index `state` live (every transition enabled somewhere after it)? */
@@ -185,8 +186,9 @@ export function placeBounds(net: Net, graph: StateGraph = reachabilityGraph(net)
 
 /** Def. 17: is every place k-bounded (Def. 16)? The reason gives the smallest such k. */
 export function isKBounded(net: Net, k: number, graph: StateGraph = reachabilityGraph(net)): Check {
-  if (!graph.complete) return { ok: false, reason: "The state space was not fully explored, so boundedness is not decided" };
   const b = Math.max(0, ...[...placeBounds(net, graph).values()].map((x) => x.perColour));
+  // A marking above k in the explored part already disproves k-boundedness; anything else needs the whole graph.
+  if (!graph.complete && b <= k) return { ok: false, unknown: true, reason: `Not decided: the state space was not fully explored (at most ${b} token(s) of one colour so far)` };
   return b <= k ? { ok: true, reason: `${b}-bounded: no place ever holds more than ${b} token(s) of one colour (Defs 16-17)` } : { ok: false, reason: `Some place holds ${b} tokens of one colour (Defs 16-17)` };
 }
 
@@ -204,11 +206,11 @@ export function isStructurallyBounded(net: Net): Check {
 
 /** Def. 10: is the marked net cyclic/reversible (M0 reachable from every reachable marking)? */
 export function isReversible(net: Net, graph: StateGraph = reachabilityGraph(net)): Check {
+  if (!graph.complete) return { ok: false, unknown: true, reason: `Not decided: the state space was not fully explored (${graph.markings.length.toLocaleString("en")} markings so far)` };
   const { comp } = sccs(graph);
   const bad = comp.findIndex((c) => c !== comp[0]);
-  const part = graph.complete ? "" : " (in the explored part of the state space)";
-  if (bad >= 0) return { ok: false, reason: `Not cyclic/reversible${part}: the initial marking cannot be recovered from reachable marking number ${bad} (Def. 10)` };
-  return { ok: true, reason: `Cyclic/reversible${part}: the initial marking can be recovered from each of the ${graph.markings.length} reachable markings (Def. 10)` };
+  if (bad >= 0) return { ok: false, reason: `Not cyclic/reversible: the initial marking cannot be recovered from reachable marking number ${bad} (Def. 10)` };
+  return { ok: true, reason: `Cyclic/reversible: the initial marking can be recovered from each of the ${graph.markings.length} reachable markings (Def. 10)` };
 }
 
 /** Def. 18: is the net pure (no place is both a pre-place and a post-place of one transition)? */

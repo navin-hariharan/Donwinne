@@ -397,6 +397,8 @@ function buildMenu(): Menu {
       item("Zoom In", "zoom-in", "CmdOrCtrl+="),
       item("Zoom Out", "zoom-out", "CmdOrCtrl+-"),
       item("Zoom to Fit", "zoom-fit", "CmdOrCtrl+0"),
+      // Shift+F is handled by the page: as a menu accelerator it would swallow capital Fs typed into text fields.
+      item("Zoom to Selection", "zoom-selection"),
       item("Overview Map", "toggle-minimap"),
       item("Element Table and Hierarchy", "elements"),
       { type: "separator" },
