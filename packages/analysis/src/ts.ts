@@ -71,7 +71,7 @@ export function labelText(ts: TransitionSystem, label: number): string {
 }
 
 /** Build the compressed edge arrays from parallel edge lists. */
-function compress(n: number, from: ArrayLike<number>, to: ArrayLike<number>, label: ArrayLike<number>) {
+export function compress(n: number, from: ArrayLike<number>, to: ArrayLike<number>, label: ArrayLike<number>) {
   const m = from.length;
   const edgeStart = new Int32Array(n + 1);
   for (let e = 0; e < m; e++) edgeStart[from[e] + 1]++;
@@ -100,11 +100,15 @@ export function interleavingSystem(pt: PTNet, opts: TransitionSystemOptions = {}
   const ss = explore(pt, maxStates, opts.signal);
   for (const e of ss.errors) notes.push(`While exploring the state space: ${e}`);
   if (ss.truncated) notes.push(`The state space was cut off at ${maxStates} states; results on the partial graph are not conclusive.`);
+  if (ss.unresolved.length)
+    notes.push(`In ${ss.unresolved.length} state${ss.unresolved.length === 1 ? "" : "s"} a transition could not be evaluated, so their successors are unknown; verdicts that depend on them are "unknown".`);
   const { edgeStart, edgeTo, edgeLabel } = compress(ss.markings.length, ss.from, ss.to, ss.trans);
+  const complete = !ss.truncated && !ss.unresolved.length;
   let open: Uint8Array | undefined;
-  if (ss.truncated) {
+  if (!complete) {
     open = new Uint8Array(ss.markings.length);
-    open.fill(1, ss.cutAt ?? 0);
+    if (ss.truncated) open.fill(1, ss.cutAt ?? 0);
+    for (const s of ss.unresolved) open[s] = 1;
   }
   return {
     semantics: "interleaving",
@@ -115,7 +119,7 @@ export function interleavingSystem(pt: PTNet, opts: TransitionSystemOptions = {}
     edgeTo,
     edgeLabel,
     labels: pt.transitions.map((_, t) => [t]),
-    complete: !ss.truncated,
+    complete,
     ...(open ? { open } : {}),
     notes,
   };

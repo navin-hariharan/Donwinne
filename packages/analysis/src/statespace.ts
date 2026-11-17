@@ -14,6 +14,14 @@ export class Firer {
   private readonly need: (Int32Array | null)[];
   /** Transitions with only normal/read arcs of constant weight (and no capacities): (place, change) pairs. */
   private readonly delta: (Int32Array | null)[];
+  /**
+   * Enabling candidates: a transition that needs w > 0 tokens on some place (its trigger) can only
+   * be enabled when that place holds w tokens. byTrigger[p] lists (transition, w) pairs; the other
+   * transitions (no constant positive input, or a modulo net) are always tried.
+   */
+  private readonly byTrigger: Int32Array[];
+  private readonly always: Int32Array;
+  private readonly mark: Uint8Array;
 
   constructor(private readonly pt: PTNet) {
     const m = pt.transitions.length;
@@ -44,6 +52,56 @@ export class Firer {
     pt.capacity.forEach((c, i) => {
       if (c !== undefined) this.slotCaps.push([i, c]);
     });
+    // Trigger of each transition: the input place with the largest constant need (equal arcs and
+    // weights depending on the marking do not qualify), so that rarely marked places filter best.
+    const trig: number[][] = Array.from({ length: pt.places.length }, () => []);
+    const always: number[] = [];
+    for (let t = 0; t < m; t++) {
+      let best = -1;
+      let bestW = 0;
+      if (!pt.modulus)
+        for (const a of this.ins[t])
+          if ((a.kind === "normal" || a.kind === "read") && a.weight !== null && a.weight > bestW) {
+            best = a.place;
+            bestW = a.weight;
+          }
+      if (best < 0) always.push(t);
+      else trig[best].push(t, bestW);
+    }
+    this.byTrigger = trig.map((x) => Int32Array.from(x));
+    this.always = Int32Array.from(always);
+    this.mark = new Uint8Array(m);
+  }
+
+  /**
+   * Write into `out` (length ≥ number of transitions), in ascending order, the transitions that may
+   * be enabled at M, and return how many there are. Every enabled transition is among them.
+   */
+  candidates(M: ArrayLike<number>, out: Int32Array): number {
+    let k = 0;
+    const mark = this.mark;
+    for (let i = 0; i < this.always.length; i++) {
+      const t = this.always[i];
+      mark[t] = 1;
+      out[k++] = t;
+    }
+    const byTrigger = this.byTrigger;
+    for (let p = 0; p < byTrigger.length; p++) {
+      const have = M[p];
+      if (have <= 0) continue;
+      const list = byTrigger[p];
+      for (let i = 0; i < list.length; i += 2)
+        if (have >= list[i + 1]) {
+          const t = list[i];
+          if (!mark[t]) {
+            mark[t] = 1;
+            out[k++] = t;
+          }
+        }
+    }
+    for (let i = 0; i < k; i++) mark[out[i]] = 0;
+    if (k > 1) out.subarray(0, k).sort();
+    return k;
   }
 
   private weight(a: PTArc, M: ArrayLike<number>): number {
@@ -52,6 +110,21 @@ export class Firer {
     const w = num(evaluate(a.expr, this.pt.envAt(M)));
     if (!Number.isInteger(w) || w < 0) throw new Error(`Arc ${a.label}: the weight must be a whole number of zero or more, got ${w}`);
     return w;
+  }
+
+  /**
+   * For a transition with only normal and read arcs of constant weight in a net without capacities:
+   * its (place, change) pairs. Null for every other transition (use {@link fireInto}).
+   */
+  plainDelta(t: number): Int32Array | null {
+    return this.need[t] ? this.delta[t] : null;
+  }
+
+  /** Whether M covers the inputs of a transition with a {@link plainDelta}. */
+  covers(t: number, M: ArrayLike<number>): boolean {
+    const need = this.need[t]!;
+    for (let i = 0; i < need.length; i += 2) if (M[need[i]] < need[i + 1]) return false;
+    return true;
   }
 
   /** Fire t at M into `out` (same length as M); false if t is not enabled. */
@@ -116,9 +189,9 @@ export class Firer {
 export interface StateSpace {
   markings: Int32Array[];
   /** Edges as parallel arrays. */
-  from: number[];
-  to: number[];
-  trans: number[];
+  from: Int32Array;
+  to: Int32Array;
+  trans: Int32Array;
   /** BFS tree: parent state and transition (-1 for the initial state). */
   parent: Int32Array;
   parentT: Int32Array;
@@ -131,92 +204,238 @@ export interface StateSpace {
   cutAt?: number;
   /** Evaluation errors (marking-dependent weights). */
   errors: string[];
+  /**
+   * States where some transition could not be evaluated (a marking-dependent weight gave no whole
+   * number of zero or more). Their successor lists may be incomplete, so they are never counted as
+   * dead, and a state space with any of them is not complete.
+   */
+  unresolved: number[];
 }
 
-/** Hash set of markings (no string keys: much faster for large markings). */
-class MarkingIndex {
-  private readonly buckets = new Map<number, number | number[]>();
-  constructor(private readonly markings: Int32Array[]) {}
+/**
+ * Markings of a state space, stored as views into large shared buffers (one small typed array per
+ * state would cost a backing store each), with an open-addressing hash index. Markings are handed
+ * out as Int32Array views, so callers index them like before.
+ */
+export class MarkingStore {
+  readonly markings: Int32Array[] = [];
+  private chunk: Int32Array;
+  private used = 0;
+  private table: Int32Array;
+  private hashes: Int32Array;
+  private mask: number;
+  private readonly chunkInts: number;
+  /** Random odd multipliers: the hash Σ M[p]·R[p] (mod 2^32) can be updated place by place. */
+  private readonly R: Int32Array;
 
-  private static hash(M: Int32Array): number {
-    let h = 0x811c9dc5;
-    for (let i = 0; i < M.length; i++) h = Math.imul(h ^ M[i], 0x01000193);
+  constructor(private readonly width: number, expected = 1024) {
+    this.chunkInts = Math.max(width, Math.min(1 << 20, Math.max(1, width) * 4096));
+    this.chunk = new Int32Array(this.chunkInts);
+    let size = 1024;
+    while (size < expected * 2) size <<= 1;
+    this.table = new Int32Array(size).fill(-1);
+    this.hashes = new Int32Array(1024);
+    this.mask = size - 1;
+    this.R = new Int32Array(width);
+    let x = 0x9e3779b9 | 0;
+    for (let p = 0; p < width; p++) {
+      // xorshift32: deterministic, so state numbering is reproducible.
+      x ^= x << 13;
+      x ^= x >>> 17;
+      x ^= x << 5;
+      this.R[p] = x | 1;
+    }
+  }
+
+  get size(): number {
+    return this.markings.length;
+  }
+
+  /** Hash of a marking; see {@link shift} for updating it. */
+  hash(M: ArrayLike<number>): number {
+    let h = 0;
+    for (let p = 0; p < this.width; p++) if (M[p]) h = (h + Math.imul(M[p], this.R[p])) | 0;
     return h;
   }
 
-  private same(i: number, M: Int32Array): boolean {
+  /** Hash after adding `by` tokens to place p. */
+  shift(h: number, p: number, by: number): number {
+    return (h + Math.imul(by, this.R[p])) | 0;
+  }
+
+  /** Hash of the stored marking i. */
+  hashAt(i: number): number {
+    return this.hashes[i];
+  }
+
+  private static slot(h: number): number {
+    h ^= h >>> 16;
+    h = Math.imul(h, 0x45d9f3b);
+    h ^= h >>> 16;
+    return h;
+  }
+
+  private equal(i: number, M: ArrayLike<number>): boolean {
     const A = this.markings[i];
-    for (let k = 0; k < M.length; k++) if (A[k] !== M[k]) return false;
+    for (let k = 0; k < this.width; k++) if (A[k] !== M[k]) return false;
     return true;
   }
 
-  get(M: Int32Array): number | undefined {
-    const b = this.buckets.get(MarkingIndex.hash(M));
-    if (b === undefined) return undefined;
-    if (typeof b === "number") return this.same(b, M) ? b : undefined;
-    for (const i of b) if (this.same(i, M)) return i;
-    return undefined;
+  /** Index of marking M, or -1. `h` is its hash, if known. */
+  find(M: ArrayLike<number>, h = this.hash(M)): number {
+    for (let slot = MarkingStore.slot(h) & this.mask; ; slot = (slot + 1) & this.mask) {
+      const i = this.table[slot];
+      if (i < 0) return -1;
+      if (this.hashes[i] === h && this.equal(i, M)) return i;
+    }
   }
 
-  /** Register markings[i]. */
-  add(i: number) {
-    const h = MarkingIndex.hash(this.markings[i]);
-    const b = this.buckets.get(h);
-    if (b === undefined) this.buckets.set(h, i);
-    else if (typeof b === "number") this.buckets.set(h, [b, i]);
-    else b.push(i);
+  /** Add a copy of M (which must not be present yet) and return its index. `h` is its hash, if known. */
+  add(M: ArrayLike<number>, h = this.hash(M)): number {
+    const n = this.width;
+    if (this.used + n > this.chunk.length) {
+      this.chunk = new Int32Array(this.chunkInts);
+      this.used = 0;
+    }
+    const view = this.chunk.subarray(this.used, this.used + n);
+    this.used += n;
+    for (let k = 0; k < n; k++) view[k] = M[k];
+    const i = this.markings.length;
+    this.markings.push(view);
+    if (i >= this.hashes.length) {
+      const grown = new Int32Array(this.hashes.length * 2);
+      grown.set(this.hashes);
+      this.hashes = grown;
+    }
+    this.hashes[i] = h;
+    if ((i + 1) * 2 > this.table.length) this.rehash();
+    else this.insert(i, h);
+    return i;
+  }
+
+  private insert(i: number, h: number) {
+    let slot = MarkingStore.slot(h) & this.mask;
+    while (this.table[slot] >= 0) slot = (slot + 1) & this.mask;
+    this.table[slot] = i;
+  }
+
+  private rehash() {
+    const size = this.table.length * 2;
+    this.table = new Int32Array(size).fill(-1);
+    this.mask = size - 1;
+    for (let i = 0; i < this.markings.length; i++) this.insert(i, this.hashes[i]);
+  }
+}
+
+/** Growable Int32 list (edges of large state spaces without boxed arrays). */
+export class IntList {
+  data: Int32Array;
+  length = 0;
+  constructor(capacity = 1024) {
+    this.data = new Int32Array(capacity);
+  }
+  push(v: number) {
+    if (this.length === this.data.length) {
+      const grown = new Int32Array(this.data.length * 2);
+      grown.set(this.data);
+      this.data = grown;
+    }
+    this.data[this.length++] = v;
+  }
+  toArray(): Int32Array {
+    return this.data.slice(0, this.length);
   }
 }
 
 export function explore(pt: PTNet, maxStates: number, signal?: AbortSignal): StateSpace {
   const firer = new Firer(pt);
   const m = pt.transitions.length;
-  const M0 = Int32Array.from(pt.m0);
-  const markings: Int32Array[] = [M0];
-  const index = new MarkingIndex(markings);
-  index.add(0);
-  const scratch = new Int32Array(M0.length);
-  const from: number[] = [];
-  const to: number[] = [];
-  const trans: number[] = [];
-  const parent: number[] = [-1];
-  const parentT: number[] = [-1];
+  const store = new MarkingStore(pt.places.length, Math.min(maxStates, 1 << 16));
+  store.add(pt.m0);
+  const markings = store.markings;
+  // `cur` holds the marking being expanded; plain transitions are applied to it and undone.
+  const cur = new Int32Array(pt.places.length);
+  const scratch = new Int32Array(pt.places.length);
+  const cand = new Int32Array(m);
+  const from = new IntList();
+  const to = new IntList();
+  const trans = new IntList();
+  const parent = new IntList();
+  const parentT = new IntList();
+  parent.push(-1);
+  parentT.push(-1);
   const dead: number[] = [];
+  const unresolved: number[] = [];
   const errors = new Set<string>();
   let truncated = false;
   let cutAt: number | undefined;
   for (let i = 0; i < markings.length; i++) {
     if ((i & 1023) === 0) checkAbort(signal);
     const M = markings[i];
+    cur.set(M);
+    const hM = store.hashAt(i);
     let enabled = false;
-    for (let t = 0; t < m; t++) {
-      try {
-        if (!firer.fireInto(t, M, scratch)) continue;
-      } catch (e) {
-        errors.add((e as Error).message);
-        continue;
+    let failed = false;
+    const k = firer.candidates(M, cand);
+    for (let c = 0; c < k; c++) {
+      const t = cand[c];
+      const d = firer.plainDelta(t);
+      let next: Int32Array;
+      let h: number;
+      if (d) {
+        if (!firer.covers(t, M)) continue;
+        h = hM;
+        for (let x = 0; x < d.length; x += 2) {
+          cur[d[x]] += d[x + 1];
+          h = store.shift(h, d[x], d[x + 1]);
+        }
+        next = cur;
+      } else {
+        try {
+          if (!firer.fireInto(t, M, scratch)) continue;
+        } catch (e) {
+          // Not "disabled": whether t can fire here is unknown.
+          errors.add((e as Error).message);
+          failed = true;
+          continue;
+        }
+        next = scratch;
+        h = store.hash(scratch);
       }
       enabled = true;
-      let j = index.get(scratch);
-      if (j === undefined) {
+      let j = store.find(next, h);
+      if (j < 0) {
         if (markings.length >= maxStates) {
           if (!truncated) cutAt = i;
           truncated = true;
-          continue;
+        } else {
+          j = store.add(next, h);
+          parent.push(i);
+          parentT.push(t);
         }
-        j = markings.length;
-        markings.push(new Int32Array(scratch));
-        index.add(j);
-        parent.push(i);
-        parentT.push(t);
       }
+      if (d) for (let x = 0; x < d.length; x += 2) cur[d[x]] -= d[x + 1];
+      if (j < 0) continue;
       from.push(i);
       to.push(j);
       trans.push(t);
     }
-    if (!enabled) dead.push(i);
+    if (failed) unresolved.push(i);
+    else if (!enabled) dead.push(i);
   }
-  return { markings, from, to, trans, parent: Int32Array.from(parent), parentT: Int32Array.from(parentT), dead, truncated, ...(cutAt !== undefined ? { cutAt } : {}), errors: [...errors] };
+  return {
+    markings,
+    from: from.toArray(),
+    to: to.toArray(),
+    trans: trans.toArray(),
+    parent: parent.toArray(),
+    parentT: parentT.toArray(),
+    dead,
+    truncated,
+    ...(cutAt !== undefined ? { cutAt } : {}),
+    errors: [...errors],
+    unresolved,
+  };
 }
 
 export interface TerminalAnalysis {

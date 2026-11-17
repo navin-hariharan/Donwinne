@@ -6,7 +6,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import type { DesktopBridge, FileFilter, MenuCommand, OpenedFile } from "../../../packages/editor/src/platform";
 import { IPC, type NativeEditCommand } from "./ipc";
 
-export interface PnsDesktopApi extends DesktopBridge {
+interface PnsDesktopApi extends DesktopBridge {
   /**
    * Subscribe to files the OS asks the app to open (command line argument, macOS open-file,
    * second launch). Files that arrived before the first subscription are delivered right after

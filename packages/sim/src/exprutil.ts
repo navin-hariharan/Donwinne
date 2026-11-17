@@ -20,23 +20,6 @@ export function mapExpr(e: Expr, f: (e: Expr) => Expr | undefined): Expr {
   }
 }
 
-/** True if any node satisfies the predicate. */
-export function someExpr(e: Expr, p: (e: Expr) => boolean): boolean {
-  if (p(e)) return true;
-  switch (e.k) {
-    case "call":
-      return e.args.some((a) => someExpr(a, p));
-    case "tuple":
-      return e.items.some((a) => someExpr(a, p));
-    case "un":
-      return someExpr(e.e, p);
-    case "bin":
-      return someExpr(e.l, p) || someExpr(e.r, p);
-    default:
-      return false;
-  }
-}
-
 /** An expression that evaluates to the given colour value. */
 export function literal(v: Value): Expr {
   if (typeof v === "number") return { k: "num", v };

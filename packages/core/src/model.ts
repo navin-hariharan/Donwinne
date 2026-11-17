@@ -25,22 +25,6 @@ export type NetClass =
   | "apn"
   | "tapn";
 
-/** Net classes whose transitions carry rates or delays and are simulated over time. */
-export const QUANTITATIVE_CLASSES: NetClass[] = [
-  "stochastic",
-  "continuous",
-  "hybrid",
-  "colouredStochastic",
-  "colouredContinuous",
-  "colouredHybrid",
-  "fuzzyStochastic",
-  "fuzzyContinuous",
-  "fuzzyHybrid",
-  "colouredFuzzyStochastic",
-  "colouredFuzzyContinuous",
-  "colouredFuzzyHybrid",
-];
-
 /** Net classes with colour sets, variables and multiset inscriptions. */
 export const COLOURED_CLASSES: NetClass[] = [
   "coloured",
@@ -393,10 +377,6 @@ export function newId(prefix: string): string {
   return `${prefix}${Date.now().toString(36)}${counter.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
-export function nodeById(net: Net, id: string): Place | Transition | undefined {
-  return net.places.find((p) => p.id === id) ?? net.transitions.find((t) => t.id === id);
-}
-
 export function isPlace(net: Net, id: string): boolean {
   return net.places.some((p) => p.id === id);
 }
@@ -409,10 +389,3 @@ export function nextName(existing: string[], prefix: string): string {
   return `${prefix}${i}`;
 }
 
-export function inArcs(net: Net, transitionId: string): Arc[] {
-  return net.arcs.filter((a) => a.target === transitionId);
-}
-
-export function outArcs(net: Net, transitionId: string): Arc[] {
-  return net.arcs.filter((a) => a.source === transitionId);
-}

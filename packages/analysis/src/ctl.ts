@@ -162,8 +162,43 @@ function lex(text: string): Tok[] {
 const TEMPORAL = new Set(["EX", "AX", "EF", "AF", "EG", "AG"]);
 const START_OF_FORMULA = ["a place name", "a number", '"("', '"!"', "EX, AX, EF, AF, EG, AG", "E[… U …]", "A[… U …]", "true", "false", "deadlock", "fireable(…)"];
 
+/** Brackets and prefix operators nested deeper than this are refused (the parser recurses). */
+const MAX_NESTING = 200;
+/** Formula trees deeper than this are refused: model checking walks them recursively. */
+const MAX_FORMULA_DEPTH = 1000;
+
+function formulaDepth(root: CtlFormula): number {
+  let max = 0;
+  const stack: [CtlFormula, number][] = [[root, 1]];
+  while (stack.length) {
+    const [f, d] = stack.pop()!;
+    if (d > max) max = d;
+    switch (f.kind) {
+      case "and":
+      case "or":
+      case "implies":
+      case "iff":
+      case "EU":
+      case "AU":
+        stack.push([f.left, d + 1], [f.right, d + 1]);
+        break;
+      case "not":
+      case "EX":
+      case "AX":
+      case "EF":
+      case "AF":
+      case "EG":
+      case "AG":
+        stack.push([f.arg, d + 1]);
+        break;
+    }
+  }
+  return max;
+}
+
 class Parser {
   private i = 0;
+  private nesting = 0;
   constructor(
     private readonly text: string,
     private readonly toks: Tok[],
@@ -198,6 +233,16 @@ class Parser {
     this.fail([`"${close}"`], `expected "${close}" to close the "${open.text}" at line ${o.line}, column ${o.column}, but found ${this.t.kind === "eof" ? "end of formula" : `"${this.found()}"`}.`);
   }
 
+  /** Runs one nested level (a bracket or a prefix operator), refusing absurd depths. */
+  private nested<T>(f: () => T): T {
+    if (++this.nesting > MAX_NESTING) this.fail(["a less deeply nested formula"], `the formula is nested too deeply (more than ${MAX_NESTING} levels of brackets or operators).`);
+    try {
+      return f();
+    } finally {
+      this.nesting--;
+    }
+  }
+
   parse(): CtlFormula {
     if (this.t.kind === "eof") this.fail(START_OF_FORMULA, "the formula is empty.");
     const f = this.iff();
@@ -207,6 +252,7 @@ class Parser {
       if (this.isWord("U")) this.fail(["an operator"], 'U can only be used inside E[ … U … ] or A[ … U … ].');
       this.fail(["&", "|", "->", "<->", "end of formula"]);
     }
+    if (formulaDepth(f) > MAX_FORMULA_DEPTH) this.fail(["a shorter formula"], `the formula is too long to check (more than ${MAX_FORMULA_DEPTH} operators in a chain); split it into several formulas.`, this.toks[0]);
     return f;
   }
 
@@ -263,23 +309,23 @@ class Parser {
     const t = this.t;
     if (this.isOp("!", "~") || this.isWord("not")) {
       this.next();
-      const arg = this.unary();
+      const arg = this.nested(() => this.unary());
       return { kind: "not", arg, span: this.span(t.start) };
     }
     if (t.kind === "ident" && !t.colour && TEMPORAL.has(t.text)) {
       this.next();
       if (this.t.kind === "eof") this.fail(START_OF_FORMULA, `${t.text} needs a formula after it, e.g. ${t.text}(p > 0).`);
-      const arg = this.unary();
+      const arg = this.nested(() => this.unary());
       return { kind: t.text as UnaryTemporal, arg, span: this.span(t.start) };
     }
     if (this.isWord("E", "A")) {
       this.next();
       if (!this.isOp("[", "(")) this.fail(['"["', '"("'], `${t.text} must be followed by [ φ U ψ ] (or the unary operators ${t.text}X, ${t.text}F, ${t.text}G).`);
       const open = this.next();
-      const left = this.iff();
+      const left = this.nested(() => this.iff());
       if (!this.isWord("U")) this.fail(['"U"'], `expected U in ${t.text}${open.text} φ U ψ ${open.text === "[" ? "]" : ")"} but found ${this.t.kind === "eof" ? "end of formula" : `"${this.found()}"`}.`);
       this.next();
-      const right = this.iff();
+      const right = this.nested(() => this.iff());
       this.expectClose(open, open.text === "[" ? "]" : ")");
       return { kind: t.text === "E" ? "EU" : "AU", left, right, span: this.span(t.start) };
     }
@@ -291,7 +337,7 @@ class Parser {
     if (this.isOp("(")) {
       this.next();
       if (this.isOp(")")) this.fail(START_OF_FORMULA, "empty brackets: write a formula between them.");
-      const f = this.iff();
+      const f = this.nested(() => this.iff());
       this.expectClose(t, ")");
       // A bracketed formula may not be compared: (p) > 0 is not supported.
       if (this.isOp("==", "=", "!=", "<>", "<", "<=", ">", ">=")) this.fail(["&", "|", "->"], "only place names and numbers can be compared; remove the brackets around the place name.");

@@ -1,8 +1,8 @@
 // Performance baselines for the engine packages. Run with `pnpm bench`; compare the numbers on one
 // machine (or one CI runner) before and after a change, since absolute times depend on the hardware.
 import { bench, describe } from "vitest";
-import { buildTransitionSystem, checkCtl, transitionSystemFromStepGraph } from "@pns/analysis";
-import { ambientGarage, ambientGarageFragment, constructTapn, concurrentReachabilityGraph } from "@pns/apn";
+import { buildTransitionSystem, checkCtl, interleavingSystem, sliceNet, stubbornSystem, toPTNet, transitionSystemFromStepGraph } from "@pns/analysis";
+import { ambientGarage, ambientGarageFragment, constructTapn, concurrentReachabilityGraph, fig410 } from "@pns/apn";
 import { simulate, unfold } from "@pns/sim";
 import { emptyNet, type Net } from "@pns/core";
 
@@ -51,5 +51,26 @@ describe("simulation", () => {
   });
   bench("Gillespie, 100 runs of a decay net", () => {
     simulate(decay, { end: 10, points: 101, runs: 100, seed: 1 });
+  });
+});
+
+describe("slicing and stubborn sets", () => {
+  const garagePt = toPTNet(constructTapn(garage).net);
+  const chapterPt = toPTNet(constructTapn(fig410()).net);
+  const Q = ["p3[b]", "p3[w]", "p3[b_bar]", "p3[w_bar]"];
+  bench("abstract slice of the garage T-APN", () => {
+    sliceNet(garagePt, { places: ["exit[1]"] }, { algorithm: "abstract" });
+  });
+  bench("Wangyang slice of the garage T-APN", () => {
+    sliceNet(garagePt, { places: ["exit[1]"] }, { algorithm: "wangyang" });
+  });
+  bench("chapter Fig. 7 T-APN: full interleaving graph (256 states)", () => {
+    interleavingSystem(chapterPt);
+  });
+  bench("chapter Fig. 7 T-APN: abstract slice and its graph (16 states)", () => {
+    interleavingSystem(sliceNet(chapterPt, { places: Q }).pt);
+  });
+  bench("garage T-APN: stubborn-set graph for deadlocks", () => {
+    stubbornSystem(garagePt);
   });
 });

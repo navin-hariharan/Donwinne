@@ -114,15 +114,17 @@ The Analyse menu depends on the net class.
 | Net properties and invariants… | Petri nets except freestyle | [Analysis](analysis.md#net-properties-and-invariants) |
 | Reachability graph… | Petri nets except freestyle | [Analysis](analysis.md#reachability-graph) |
 | Model checking (CTL)… | Petri nets except freestyle | [CTL model checking](ctl.md) |
+| Slice the net… | Petri nets except freestyle | [Slicing](slicing.md#slicing-a-net-in-the-editor) |
 | Unfold to an uncoloured net | Coloured classes | [Simulation](simulation.md#unfolding) |
 | Treat as an APN (ambient net) | Coloured nets | [Ambient Petri nets](ambient-petri-nets.md) |
 | Fault tree analysis… | Fault trees | [Analysis](analysis.md#fault-tree-analysis) |
 | Check the model | Always | Opens the **Problems** tab. |
 
-For APNs and T-APNs the menu starts with an **Ambient (Konios)** group: Play the step token game (S), Concurrent reachability graph…, APN properties…, Model checking (CTL)…, Construct T-APN (APNs only), Check equivalence…, Building blocks… and Compose steps… (APNs only). In a T-APN that was not constructed in this session, **Check equivalence…** is greyed out with the hint "Open the APN and check equivalence there". These are described in [Ambient Petri nets](ambient-petri-nets.md).
+For APNs and T-APNs the menu starts with an **Ambient (Konios)** group: Play the step token game (S), Concurrent reachability graph…, APN properties…, Model checking (CTL)…, Construct T-APN (APNs only), Check equivalence…, Building blocks…, Compose steps… (APNs only) and Framework pipeline (APN → T-APN → slice)… (see [Slicing and the framework](slicing.md#the-framework-pipeline)). In a T-APN that was not constructed in this session, **Check equivalence…** is greyed out with the hint "Open the APN and check equivalence there". These are described in [Ambient Petri nets](ambient-petri-nets.md).
 
 ### Help
 
+- **Docs (search everything)…** (F1) opens this documentation inside the app, with a search over every section. See [Using these docs](getting-started.md#using-these-docs).
 - **Quick guide and shortcuts** (?) opens the **Quick guide** dialog: short instructions for drawing, touch screens, running nets and ambient nets, and a table of shortcuts.
 - **About** shows the version and licence.
 
@@ -401,6 +403,7 @@ Shortcuts without Ctrl are ignored while you type in a text field. Ctrl means �
 | Ctrl+0 | Zoom to fit |
 | Ctrl+wheel, pinch | Zoom |
 | Space+drag, right-drag, middle-drag | Pan |
+| F1 | Docs (this documentation, searchable) |
 | ? | Quick guide |
 | M | Overview map on or off |
 | B | Bottom panel on or off |
@@ -497,7 +500,7 @@ The desktop app is the same editor in its own window, with native menus and file
 - **File:** New…, New APN from Building Blocks…, Open…, Open Recent (macOS), Save, Save As…, Import (Snoopy, PNML, ANDL)…, Export As (Snoopy File…, PNML…, ANDL…, CANDL…, LoLA…, TINA…, APNN…, PRISM…, SBML…, Declarations as CSV…, Minimal Cut Sets (DNF)…, LaTeX (TikZ)…, SVG Image…, PNG Image…), Print… and Quit.
 - **Edit:** Undo, Redo, Cut, Copy, Paste, Duplicate, Delete, Select All, Find…, Group into Subnet and Auto Layout.
 - **View:** Zoom In, Zoom Out, Zoom to Fit, Overview Map, Element Table and Hierarchy, developer tools and full screen.
-- **Analyse:** Token Game, Reachability Graph…, Net Properties and Invariants…, Model Checking (CTL)…, Unfold to an Uncoloured Net, and an **Ambient (Konios)** submenu.
-- **Help:** Quick Guide and About Donwinne.
+- **Analyse:** Token Game, Reachability Graph…, Net Properties and Invariants…, Model Checking (CTL)…, Slice the Net…, Unfold to an Uncoloured Net, and an **Ambient (Konios)** submenu (with Framework Pipeline…).
+- **Help:** Docs (F1), Quick Guide and About Donwinne.
 
 The desktop app opens `.pns.json` files and the Snoopy, PNML, ANDL and CANDL extensions from your file manager, asks before closing a window with unsaved changes, and has a minimum window size of 640 × 540. Printing prints the canvas directly instead of opening a separate window.

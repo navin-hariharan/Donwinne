@@ -111,7 +111,7 @@ function truncate(s: string, n: number) {
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
-export function formatAmount(n: number): string {
+function formatAmount(n: number): string {
   if (Number.isInteger(n)) return String(n);
   if (Math.abs(n) >= 1000 || Math.abs(n) < 0.001) return n.toPrecision(3);
   return String(Math.round(n * 1000) / 1000);
@@ -558,7 +558,7 @@ const FTNodeView = React.memo(function FTNodeView({ n, inputs, palette, selected
   );
 });
 
-export const FaultTreeDrawing = React.memo(function FaultTreeDrawing({ net, palette, selection, interactive, editing, failed, highlight, labelMin = 0, hover, shortNames, viewport }: {
+const FaultTreeDrawing = React.memo(function FaultTreeDrawing({ net, palette, selection, interactive, editing, failed, highlight, labelMin = 0, hover, shortNames, viewport }: {
   net: Net;
   palette: Palette;
   selection?: Set<string>;

@@ -4,7 +4,7 @@ import { Net, Value, ambientCapacity, arcVariable, showValue, valueKey } from "@
 import { AmbientNet, asAmbient, markingPairs, ambientInitialMarking } from "./semantics";
 
 /** N = (P, T, Pre, Post, I, Cl, C, K, M0, G) of Def. 3, by element name. */
-export interface ApnTuple {
+interface ApnTuple {
   P: string[];
   T: string[];
   /** Pre(t) and Post(t) as sets of place names (every directed arc has weight 1). */
@@ -24,7 +24,7 @@ export interface ApnTuple {
 }
 
 /** N = (P, T, Pre, Post, Cl, Cl̄, C_P, C_T, Ins, K, Gd, M0, G) of Def. 20, by element name. */
-export interface TapnTuple {
+interface TapnTuple {
   P: string[];
   T: string[];
   Pre: Record<string, string[]>;

@@ -24,7 +24,7 @@ export interface StateGraph {
   complete: boolean;
 }
 
-export interface ReachabilityOptions {
+interface ReachabilityOptions {
   /** "step" (default): the concurrent reachability graph CRG(N) of Sec. 3.4. "interleaving": core's one-at-a-time firing. */
   semantics?: "step" | "interleaving";
   /** Stop after this many states (default 20000). */
@@ -50,7 +50,10 @@ export function reachabilityGraph(net: Net, options: ReachabilityOptions = {}): 
   for (let i = 0; i < markings.length; i++) {
     const M = markings[i];
     for (let t = 0; t < cn.transitions.length; t++) {
-      for (const b of enabledBindings(cn, t, M).bindings) {
+      const r = enabledBindings(cn, t, M);
+      // A transition that could not be checked here leaves M's successors unknown.
+      if (r.error) complete = false;
+      for (const b of r.bindings) {
         const M2 = fire(cn, t, b, M);
         const k = markingKey(M2);
         let j = index.get(k);
@@ -254,9 +257,9 @@ export function isOrdinary(net: Net): Check {
 }
 
 /** A goal for {@link findReachable}: place name → user colours that must all be in that place. */
-export type MarkingGoal = Record<string, (string | number)[]>;
+type MarkingGoal = Record<string, (string | number)[]>;
 
-export interface FoundPath {
+interface FoundPath {
   found: boolean;
   /** The firing sequence that reaches the goal, as transition names and colour modes. */
   path: { transition: string; binding: Record<string, unknown> }[];

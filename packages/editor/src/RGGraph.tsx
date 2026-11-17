@@ -1,7 +1,7 @@
 // The reachability graph drawn as a graph: one box per state, one arrow per firing, laid out top to
 // bottom with ELK so the initial marking is at the top and the flow of the net reads downwards.
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 export interface RGNode {
   /** Short name, "M0" for the initial marking. */
@@ -102,7 +102,7 @@ export function RGGraph({ nodes, edges, onPick }: { nodes: RGNode[]; edges: RGEd
   return (
     <div className="rg-graph" data-testid="rg-graph">
       {nodes.length > shown.length && <p className="muted small">Drawing the first {shown.length} of {nodes.length} states; the table lists them all.</p>}
-      <svg width={laid.width} height={laid.height} viewBox={`-12 -12 ${laid.width} ${laid.height}`} role="img" aria-label="Reachability graph">
+      <svg width={laid.width} height={laid.height} viewBox={`-12 -12 ${laid.width} ${laid.height}`} role="group" aria-label="Reachability graph">
         <defs>
           <marker id="rg-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0,0 L10,5 L0,10 z" className="rg-arrowhead" />

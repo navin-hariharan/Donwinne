@@ -30,7 +30,7 @@ export function isAmbientNet(net: Net): boolean {
   return isAmbient(net.netClass);
 }
 
-export interface AmbientState {
+interface AmbientState {
   /** Structured transitions picked to fire together as one step. */
   pending: StructuredTransition[];
   /** Tapping a transition on the canvas adds it to the pending step instead of firing it. */
@@ -70,7 +70,7 @@ export function allStructured(net: Net): StructuredTransition[] {
 }
 
 /** Limits that keep the step lists quick in the token game. */
-export const STEP_LIMITS = { maxSteps: 400, maxNodes: 40_000 };
+const STEP_LIMITS = { maxSteps: 400, maxNodes: 40_000 };
 
 const enabledCache = new WeakMap<Marking, { net: Net; list: StructuredTransition[] }>();
 /** The structured transitions enabled on their own at M (cached per marking). */
@@ -176,16 +176,16 @@ export function conflictReason(net: Net, M: Marking, a: StructuredTransition, b:
   const ta = an.transitions.find((x) => x.id === a.transition);
   const tb = an.transitions.find((x) => x.id === b.transition);
   if (!ta || !tb) return "";
-  const use = (t: typeof ta, st: StructuredTransition, arcs: typeof ta.pre) =>
+  const use = (st: StructuredTransition, arcs: typeof ta.pre) =>
     arcs.map((x) => ({ slot: x.slot, placeId: x.placeId, g: arcColour(an, x, st.colour) })).filter((x) => x.g !== undefined) as { slot: number; placeId: string; g: Value }[];
-  const preA = use(ta, a, ta.pre);
-  const preB = use(tb, b, tb.pre);
+  const preA = use(a, ta.pre);
+  const preB = use(b, tb.pre);
   for (const x of preA) {
     if (preB.some((y) => y.slot === x.slot && valueKey(y.g) === valueKey(x.g)) && (M[x.slot]?.count(x.g) ?? 0) < 2)
       return `both need the token ${showValue(x.g)} in ${placeName(an, x.placeId)}`;
   }
-  const postA = use(ta, a, ta.post);
-  const postB = use(tb, b, tb.post);
+  const postA = use(a, ta.post);
+  const postB = use(b, tb.post);
   for (const x of postA)
     if (postB.some((y) => y.slot === x.slot && valueKey(y.g) === valueKey(x.g))) return `both put ${showValue(x.g)} into ${placeName(an, x.placeId)}, beyond its capacity`;
   return "together they need more tokens or room than the marking offers";
@@ -341,7 +341,7 @@ export function relabelStep(from: Net, to: Net, step: Step): Step {
 
 // ---------- commands ----------
 
-export function ambientProblem(net: Net, need: "apn" | "ambient"): string | null {
+function ambientProblem(net: Net, need: "apn" | "ambient"): string | null {
   if (need === "apn" && net.netClass !== "apn") return net.netClass === "tapn" ? "This is already a T-APN" : "This needs an APN: switch the net class to APN first";
   if (need === "ambient" && !isAmbient(net.netClass)) return "This needs an APN or a T-APN: switch the net class first";
   return null;

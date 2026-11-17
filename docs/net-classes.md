@@ -60,6 +60,8 @@ You choose the class when you create a model with **File > New…**. The **Creat
 
 A Petri net has **places** (circles), **transitions** (rectangles) and **arcs** between them. Places hold **tokens**; the distribution of tokens over the places is the **marking**. A transition is **enabled** when its input places hold enough tokens; when it **fires**, it removes tokens from its input places and adds tokens to its output places, as given by the arc **weights**.
 
+![Before and after a transition fires](assets/diagrams/firing-rule.svg)
+
 Donwinne's firing rule, for every class with a discrete token game, is:
 
 1. In a coloured net, the transition's **guard** must hold for the chosen binding of its variables.

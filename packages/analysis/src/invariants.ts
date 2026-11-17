@@ -37,7 +37,7 @@ export interface FarkasOptions {
   signal?: AbortSignal;
 }
 
-export class InvariantOverflow extends Error {}
+class InvariantOverflow extends Error {}
 
 /**
  * All minimal-support semi-positive integer vectors y (one per support, gcd 1) with y·A = 0, where

@@ -44,7 +44,7 @@ export function requireClass(net: Net, format: string, allowed: NetClass[]): voi
  * silently by the formats that lack them (they do not change the behaviour), so only formats that
  * keep them are listed.
  */
-export const ARC_KIND_FORMATS: Record<Arc["kind"], string[]> = {
+const ARC_KIND_FORMATS: Record<Arc["kind"], string[]> = {
   normal: ["Snoopy", "PNML", "ANDL", "APNN", "PRISM", "SBML", "TINA", "LoLA"],
   read: ["Snoopy", "PNML", "ANDL", "APNN", "PRISM", "SBML", "TINA", "LoLA"],
   inhibitor: ["Snoopy", "PNML", "ANDL", "APNN", "PRISM", "TINA"],
@@ -145,7 +145,7 @@ export function assignNames(net: Net, prefix = { place: "P", transition: "T" }):
   return names;
 }
 
-export interface ArcEntry {
+interface ArcEntry {
   place: string;
   arc: Arc;
 }
@@ -279,7 +279,7 @@ export function weightOf(a: Arc): string {
   return a.inscription.trim() === "" ? "1" : a.inscription.trim();
 }
 
-export interface PrintStyle {
+interface PrintStyle {
   and: string;
   or: string;
   not: string;

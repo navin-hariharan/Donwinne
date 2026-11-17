@@ -33,7 +33,7 @@ import {
 } from "@pns/core";
 
 /** One directed arc of a structured transition: the slot it touches and the colour it carries in mode c. */
-export interface AmbientArc {
+interface AmbientArc {
   arcId: string;
   placeId: string;
   /** Index into the marking (places that share a logical name share a slot). */
@@ -197,7 +197,7 @@ export function compileAmbient(net: Net): AmbientNet {
 }
 
 /** The binding of a structured transition (t, c): mode variable = c, complementary variable = f(c). */
-export function bindingFor(t: AmbientTransition, complements: Complements, colour: Value): Binding {
+function bindingFor(t: AmbientTransition, complements: Complements, colour: Value): Binding {
   const b: Binding = {};
   if (t.modeVariable) b[t.modeVariable] = colour;
   if (t.specialVariable) {

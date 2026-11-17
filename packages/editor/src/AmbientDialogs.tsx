@@ -304,7 +304,7 @@ const KIND_TEXT: Record<string, string> = {
 };
 
 /** Konios Sec. 6.6: are CRG(N) and CRG(φ(N)) isomorphic (Def. 22)? */
-export function EquivalencePanel({ autoRun }: { autoRun?: boolean }) {
+function EquivalencePanel({ autoRun }: { autoRun?: boolean }) {
   const net = useStore((s) => s.net);
   const construction = useAmbient((s) => s.construction);
   const [limit, setLimit] = useState(1000);

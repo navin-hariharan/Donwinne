@@ -25,6 +25,7 @@ For model checking temporal logic formulas, see [CTL model checking](ctl.md). Fo
   - [Dynamic gates and Monte Carlo simulation](#dynamic-gates-and-monte-carlo-simulation)
   - [Converting a fault tree to a Petri net](#converting-a-fault-tree-to-a-petri-net)
 - [Model checking](#model-checking)
+- [Slicing and state space reduction](#slicing-and-state-space-reduction)
 
 ## Reachability graph
 
@@ -276,3 +277,11 @@ The top event has occurred when `<top event>_failed` is marked; the net's descri
 ## Model checking
 
 To check temporal properties such as "the system can always return to its initial state" or "every request is eventually served", use **Analyse > Model checking (CTL)…**. See [CTL model checking](ctl.md).
+
+## Slicing and state space reduction
+
+**Analyse > Slice the net…** removes the parts of a net that cannot influence the places a
+property reads, with the algorithms of the survey by Khan, Konios and Guelfi (2018), and compares
+the state spaces of the net and the slice, with and without stubborn sets. **Analyse > Ambient >
+Framework pipeline…** runs the framework of Konios et al. (2023): APN, T-APN, unfolding and slice.
+See [Slicing, stubborn sets and the verification framework](slicing.md).

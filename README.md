@@ -16,8 +16,8 @@
   <img alt="React 18" src="https://img.shields.io/badge/React-18-149eca?logo=react&logoColor=white">
   <img alt="Electron" src="https://img.shields.io/badge/Electron-desktop-47848f?logo=electron&logoColor=white">
   <img alt="Installable web app" src="https://img.shields.io/badge/PWA-works%20offline-5a0fc8">
-  <img alt="Version" src="https://img.shields.io/badge/version-0.3.0-2563eb">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-613%20passing-2da44e">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.4.0-2563eb">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-637%20passing-2da44e">
 </p>
 
 <p align="center">
@@ -214,6 +214,9 @@ See [docs/simulation.md](docs/simulation.md).
 - **Structural properties:** state machine, marked graph, free choice, extended free choice, extended simple, ordinary, homogeneous, pure, conservative, connected, strongly connected and static conflict free, with the incidence matrix.
 - **Show buttons** that highlight the places or transitions of any result on the canvas, and a text report you can save.
 - **Unfolding** of coloured nets to uncoloured ones (Analyse > Unfold to an uncoloured net).
+- **Slicing** (Analyse > Slice the net): the twelve algorithms of the survey by Khan, Konios and Guelfi (2018), from Rakow's CTL\*-X and safety slicing to abstract, backward, forward, Wangyang, concerned and trace slicing, on every discrete net class, with the slice highlighted, opened as a net or exported to PNML.
+- **Stubborn sets**: a reduced state space that keeps every deadlock and, for the places a property reads, every reachable marking.
+- **The verification framework** of Konios et al. (HCII 2023) end to end (Analyse > Ambient > Framework pipeline): APN, T-APN, unfolding and slice, with the size of every state space and the verdict of every property on the net and on the slice.
 
 See [docs/analysis.md](docs/analysis.md).
 
@@ -497,7 +500,7 @@ can be checked against its source.
 
 ### Requirements
 
-- Node.js 20 or newer
+- Node.js 20.19 or newer (22 recommended)
 - pnpm 10 (`npm install -g pnpm`)
 - For the desktop app: a desktop session (Windows, macOS or Linux)
 
@@ -536,6 +539,16 @@ The desktop app is not part of the image, because Electron needs a desktop sessi
 
 Build each on its own OS. Signing, notarisation and other details are in
 [apps/desktop/README.md](apps/desktop/README.md).
+
+### Releases
+
+[`.github/workflows/desktop-release.yml`](.github/workflows/desktop-release.yml) builds all three on
+GitHub and publishes them as a release. On every push to `main` it reads the version from the
+`package.json` files; if there is no tag `v<version>` yet, it runs the type check and the tests,
+builds the installers on Linux, Windows and macOS, and creates the release `v<version>` with them.
+So to release, raise the version (in every `package.json` and in
+`packages/editor/src/version.ts`; a test checks they agree) and push. Signing is optional: add the
+secrets listed at the top of the workflow to sign and notarise.
 
 ### Installing the web app
 
@@ -604,7 +617,7 @@ The full list, with touch gestures, is in [docs/editor.md#keyboard-shortcuts](do
 ## Testing
 
 ```sh
-pnpm test        # 613 tests in 35 files
+pnpm test        # 637 tests in 37 files
 pnpm typecheck
 ```
 
@@ -621,13 +634,17 @@ figures), the construction φ and equivalence; CTL; and the thesis's chapter 7 r
 
 | Page | What it covers |
 | --- | --- |
+| [Getting started](docs/getting-started.md) | The screen, your first net in five steps, saving, the examples, and the in-app docs (Help > Docs, F1) |
+| [Every feature, A to Z](docs/feature-index.md) | One line on every feature, where to find it and its shortcut |
 | [The editor](docs/editor.md) | Menus, palette, drawing, editing, subnets, panels, shortcuts, touch, devices |
 | [Net classes](docs/net-classes.md) | Every class, the six arc types, markings and expressions, declarations, fault trees |
 | [Simulation](docs/simulation.md) | Token games, stochastic, continuous, hybrid and fuzzy simulation, plots, unfolding |
 | [Analysis](docs/analysis.md) | Reachability graph, net properties, invariants, siphons and traps, fault tree analysis |
+| [Slicing and the framework](docs/slicing.md) | The slicing algorithms, stubborn sets and the framework pipeline, with results on the papers' examples |
 | [Ambient Petri nets](docs/ambient-petri-nets.md) | The thesis chapter by chapter, with a full walkthrough of the ambient garage |
 | [CTL model checking](docs/ctl.md) | Syntax, semantics, witnesses, templates, paths and fault tolerance |
 | [File formats](docs/file-formats.md) | The native format, Snoopy, PNML, ANDL and every export |
+| [Questions and troubleshooting](docs/faq.md) | Common questions, error messages and known limitations |
 | [Architecture](docs/architecture.md) | Packages, data model, store, desktop app, building, testing and extending |
 
 An index of the pages and every image, GIF and diagram is in [docs/README.md](docs/README.md).

@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="350" viewBox="0 0 900 350" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-labelledby="title desc">
+  <title id="title">Slicing a net for a criterion place</title>
+  <desc id="desc">On the left a net of six places and six transitions with the criterion place P3 marked. The slice on the right keeps only P1, P2, P3 and the transitions t1, t2, t4 and t5 that can change them; the rest cannot influence P3 and is removed.</desc>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1d2330"/></marker>
+    <marker id="af" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#c4c9d4"/></marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/></marker>
+  </defs>
+  <rect width="900" height="350" fill="#fff"/>
+  <text x="190" y="30" text-anchor="middle" font-size="17" font-weight="700" fill="#1d2330">The net (criterion: P3)</text>
+  <text x="700" y="30" text-anchor="middle" font-size="17" font-weight="700" fill="#1d2330">CTL*-X slice</text>
+
+  <!-- Full net. Kept elements dark, removed ones faded. -->
+  <g stroke-width="2" fill="#fff">
+    <!-- arcs kept -->
+    <g stroke="#1d2330" fill="none">
+      <path d="M58,170 L93,170" marker-end="url(#a)"/>     <!-- P1->t1 -->
+      <path d="M109,170 L141,170" marker-end="url(#a)"/>   <!-- t1->P2 -->
+      <path d="M42,152 L42,110 L93,95" marker-end="url(#a)"/> <!-- P1->t2 -->
+      <path d="M190,170 L223,170" marker-end="url(#a)"/>   <!-- P2->t4 -->
+      <path d="M239,170 L271,170" marker-end="url(#a)"/>   <!-- t4->P3 -->
+      <path d="M320,170 L343,170" marker-end="url(#a)"/>   <!-- P3->t5 -->
+    </g>
+    <!-- arcs removed -->
+    <g stroke="#c4c9d4" fill="none">
+      <path d="M109,95 L141,95" marker-end="url(#af)"/>    <!-- t2->P6 -->
+      <path d="M165,195 L165,240 L223,250" marker-end="url(#af)"/> <!-- P2->t3 read -->
+      <path d="M165,300 L223,262" marker-end="url(#af)"/>  <!-- P5->t3 -->
+      <path d="M359,170 L381,170" marker-end="url(#af)"/>  <!-- t5->P4 -->
+      <path d="M380,195 L380,250" marker-end="url(#af)"/>  <!-- P4->t6 -->
+    </g>
+    <!-- places -->
+    <circle cx="40" cy="170" r="20" stroke="#1d2330"/>
+    <circle cx="165" cy="170" r="20" stroke="#1d2330"/>
+    <circle cx="295" cy="170" r="22" stroke="#2563eb" stroke-width="3.5"/>
+    <circle cx="405" cy="170" r="20" stroke="#c4c9d4"/>
+    <circle cx="165" cy="300" r="20" stroke="#c4c9d4"/>
+    <circle cx="165" cy="95" r="20" stroke="#c4c9d4"/>
+    <!-- transitions -->
+    <rect x="94" y="150" width="14" height="40" stroke="#1d2330"/>
+    <rect x="94" y="75" width="14" height="40" stroke="#1d2330"/>
+    <rect x="224" y="236" width="14" height="40" stroke="#c4c9d4"/>
+    <rect x="224" y="150" width="14" height="40" stroke="#1d2330"/>
+    <rect x="344" y="150" width="14" height="40" stroke="#1d2330"/>
+    <rect x="373" y="252" width="14" height="40" stroke="#c4c9d4"/>
+  </g>
+  <g fill="#1d2330"><circle cx="40" cy="170" r="4.5"/><circle cx="165" cy="170" r="4.5"/><circle cx="295" cy="170" r="4.5"/></g>
+  <g fill="#c4c9d4"><circle cx="405" cy="170" r="4.5"/><circle cx="165" cy="300" r="4.5"/><circle cx="165" cy="95" r="4.5"/></g>
+  <g font-size="13" text-anchor="middle">
+    <text x="40" y="208" fill="#1d2330">P1</text><text x="165" y="208" fill="#1d2330">P2</text><text x="295" y="212" fill="#2563eb" font-weight="700">P3</text>
+    <text x="428" y="150" fill="#9aa2b1">P4</text><text x="132" y="304" fill="#9aa2b1">P5</text><text x="198" y="80" fill="#9aa2b1">P6</text>
+    <text x="101" y="144" fill="#1d2330">t1</text><text x="101" y="69" fill="#1d2330">t2</text><text x="231" y="292" fill="#9aa2b1">t3</text>
+    <text x="231" y="144" fill="#1d2330">t4</text><text x="351" y="144" fill="#1d2330">t5</text><text x="402" y="300" fill="#9aa2b1">t6</text>
+  </g>
+
+  <!-- arrow -->
+  <path d="M465,170 L520,170" stroke="#2563eb" stroke-width="3" marker-end="url(#ab)"/>
+  <text x="492" y="158" text-anchor="middle" font-size="13" fill="#2563eb" font-weight="600">slice</text>
+
+  <!-- Slice -->
+  <g transform="translate(540,0)">
+    <g stroke="#1d2330" stroke-width="2" fill="none">
+      <path d="M58,170 L93,170" marker-end="url(#a)"/>
+      <path d="M109,170 L141,170" marker-end="url(#a)"/>
+      <path d="M42,152 L42,110 L93,95" marker-end="url(#a)"/>
+      <path d="M190,170 L223,170" marker-end="url(#a)"/>
+      <path d="M239,170 L271,170" marker-end="url(#a)"/>
+    </g>
+    <g stroke-width="2" fill="#fff">
+      <circle cx="40" cy="170" r="20" stroke="#1d2330"/>
+      <circle cx="165" cy="170" r="20" stroke="#1d2330"/>
+      <circle cx="295" cy="170" r="22" stroke="#2563eb" stroke-width="3.5"/>
+      <rect x="94" y="150" width="14" height="40" stroke="#1d2330"/>
+      <rect x="94" y="75" width="14" height="40" stroke="#1d2330"/>
+      <rect x="224" y="150" width="14" height="40" stroke="#1d2330"/>
+      <rect x="288" y="240" width="14" height="40" stroke="#1d2330"/>
+      <path d="M295,193 L295,238" stroke="#1d2330" fill="none" marker-end="url(#a)"/>
+    </g>
+    <g fill="#1d2330"><circle cx="40" cy="170" r="4.5"/><circle cx="165" cy="170" r="4.5"/><circle cx="295" cy="170" r="4.5"/></g>
+    <g font-size="13" text-anchor="middle" fill="#1d2330">
+      <text x="40" y="208">P1</text><text x="165" y="208">P2</text><text x="295" y="140" fill="#2563eb" font-weight="700">P3</text>
+      <text x="101" y="144">t1</text><text x="101" y="69">t2</text><text x="231" y="144">t4</text><text x="318" y="265">t5</text>
+    </g>
+  </g>
+  <text x="450" y="340" text-anchor="middle" font-size="13" fill="#5f6b7d">Faded parts cannot change P3, so every CTL*-X property of P3 has the same answer on the slice.</text>
+</svg>

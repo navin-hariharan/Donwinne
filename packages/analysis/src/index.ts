@@ -76,3 +76,19 @@ export { colourBlindProjection } from "./projection";
 export type { Projection, ProjectionOptions } from "./projection";
 export { stepSystem } from "./steps";
 export type { StepSystemOptions } from "./steps";
+export {
+  sliceNet,
+  resolveCriterion,
+  criterionFromCtl,
+  leeSlices,
+  changConcurrencySets,
+  sliceToNet,
+  netChanges,
+  evolutionImpact,
+  SLICING_ALGORITHMS,
+} from "./slicing";
+export type { SlicingAlgorithm, SlicingAlgorithmInfo, SlicingCriterion, SliceOptions, SliceMerge, NetSlice, FormulaCriterion, SlicePart, NetChange, EvolutionResult } from "./slicing";
+export { stubbornSystem } from "./stubborn";
+export type { StubbornOptions, StubbornStats } from "./stubborn";
+export { invariantBounds } from "./slicing";
+export { MarkingStore } from "./statespace";

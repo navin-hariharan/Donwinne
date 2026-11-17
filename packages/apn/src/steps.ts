@@ -23,7 +23,7 @@ export type Step = StructuredTransition[];
  */
 export type CapacityRule = "strict" | "weak" | "auto";
 
-export interface EnabledStepsOptions {
+interface EnabledStepsOptions {
   /** Return only maximal steps: those not strictly contained in another enabled step. Default false. */
   maximalOnly?: boolean;
   /** Stop after this many steps (default 10 000); the result is then marked truncated. */
@@ -35,7 +35,7 @@ export interface EnabledStepsOptions {
   capacityRule?: CapacityRule;
 }
 
-export interface EnabledSteps {
+interface EnabledSteps {
   /** The enabled steps, smallest first within the search order, each in canonical order. */
   steps: Step[];
   /** A limit was hit; some enabled steps are missing (and maximality may be approximate). */
@@ -75,12 +75,6 @@ function candidate(an: AmbientNet, t: AmbientTransition, colour: Value, order: n
   const inhib = map(t.inhibitors);
   if (!pre || !post || !inhib) return null;
   return { st: { transition: t.id, colour }, t, order, pre, post, inhib };
-}
-
-/** All structured transitions (t, c) of the net, c ∈ C(t) with Gd((t, c)) true, in canonical order. */
-export function structuredTransitions(net: Net | AmbientNet): StructuredTransition[] {
-  const an = asAmbient(net);
-  return an.transitions.flatMap((t) => t.modes.map((c) => ({ transition: t.id, colour: c })));
 }
 
 function allCandidates(an: AmbientNet): Cand[] {

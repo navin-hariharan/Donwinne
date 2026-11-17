@@ -240,7 +240,7 @@ function Matrix({ report }: { report: AnalysisReport }) {
   const { incidence, places, transitions } = report;
   if (places.length > 80 || transitions.length > 80) return <p className="muted">The matrix is too large to show ({places.length} × {transitions.length}). Save the report to get it as text.</p>;
   return (
-    <div className="rg-table-wrap">
+    <div className="rg-table-wrap" tabIndex={0}>
       <table className="rg-table matrix">
         <thead>
           <tr>
@@ -268,7 +268,7 @@ function Matrix({ report }: { report: AnalysisReport }) {
 }
 
 /** Plain-text version of the report, for saving or pasting into a paper. */
-export function reportText(r: AnalysisReport): string {
+function reportText(r: AnalysisReport): string {
   const out: string[] = [];
   out.push(`Analysis of "${r.net.name}" (${r.net.places} places, ${r.net.transitions} transitions${r.net.unfolded ? ", unfolded" : ""})`, "");
   for (const g of ["behaviour", "invariants", "siphons", "structure"] as const) {

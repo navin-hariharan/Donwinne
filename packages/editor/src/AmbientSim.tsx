@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import { Marking, Net, showTokens, showValue } from "@pns/core";
 import { StructuredTransition, asAmbient, conflicts, markingPairs, showStep, sortSteps } from "@pns/apn";
 import { compiled, simGoto, useStore } from "./store";
@@ -35,8 +35,8 @@ export function AmbientSimPanel() {
   if (!M) return null;
   return (
     <div className="sim-panel ambient">
-      <div className="sim-col">
-        <h4>History ({sim.length - 1} steps)</h4>
+      <div className="sim-col" tabIndex={0}>
+        <h4>History ({sim.length - 1} {sim.length === 2 ? "step" : "steps"})</h4>
         <ol className="history" ref={listRef} data-testid="step-history">
           {sim.map((s, i) => (
             <li key={i} className={i === simIndex ? "current" : i > simIndex ? "future" : ""} onClick={() => simGoto(i)}>
@@ -62,7 +62,7 @@ function FireColumn({ net, M, pending, maximalOnly }: { net: Net; M: Marking; pe
   const pendingKeys = new Set(pending.map(stKey));
   const status = pendingStatus(net, M, pending);
   return (
-    <div className="sim-col">
+    <div className="sim-col" tabIndex={0}>
       <h4>Structured transitions ({enabled.length} enabled)</h4>
       {enabled.length === 0 ? (
         <div className="empty">No step is enabled. The net is dead in this marking.</div>
@@ -145,7 +145,7 @@ function WhyColumn({ net, M }: { net: Net; M: Marking }) {
   const inhibited = blocked.filter((b) => b.reasons.some((r) => r.kind === "inhibitor"));
   const others = blocked.filter((b) => !b.reasons.some((r) => r.kind === "inhibitor"));
   return (
-    <div className="sim-col">
+    <div className="sim-col" tabIndex={0}>
       <h4>Conflicts (Def. 4)</h4>
       {pairs.length === 0 ? (
         <div className="muted small pad-b">None: every pair of enabled structured transitions can fire together.</div>
@@ -203,7 +203,7 @@ function MarkingColumn({ net, M }: { net: Net; M: Marking }) {
   const cn = compiled(net);
   const pairs = useMemo(() => markingPairs(net, M), [net, M]);
   return (
-    <div className="sim-col">
+    <div className="sim-col" tabIndex={0}>
       <h4>Marking</h4>
       <table className="marking">
         <tbody>

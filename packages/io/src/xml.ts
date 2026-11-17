@@ -22,11 +22,11 @@ export function textEl(name: string, text: string, attrs?: XmlEl["attrs"]): XmlE
 // eslint-disable-next-line no-control-regex
 const INVALID = /[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g;
 
-export function escapeText(s: string): string {
+function escapeText(s: string): string {
   return s.replace(INVALID, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\r/g, "&#13;");
 }
 
-export function escapeAttr(s: string): string {
+function escapeAttr(s: string): string {
   return escapeText(s).replace(/"/g, "&quot;").replace(/\t/g, "&#9;").replace(/\n/g, "&#10;");
 }
 

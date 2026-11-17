@@ -15,7 +15,7 @@
 import { Arc, Net, Place } from "@pns/core";
 
 /** A place that may carry the gluing (interface) flag of Konios's Def. 3 (G ⊆ P). */
-export type GluingAwarePlace = Place & { gluing?: boolean };
+type GluingAwarePlace = Place & { gluing?: boolean };
 
 /** The gluing flag of a place, or undefined when the net does not record it. */
 export function gluingFlag(p: Place): boolean | undefined {
@@ -30,7 +30,7 @@ export function setGluingFlag(p: Place, on: boolean): void {
 }
 
 /** One decision point of a control system (Sec. 4.1.2): pd --t_em--> pr --t_r--> pd. */
-export interface DecisionRoles {
+interface DecisionRoles {
   /** Response place p_r^i: the advice shown to the user. */
   response: string;
   /** Database place p_d^i: the users this advice is for. */
@@ -51,7 +51,7 @@ export interface StepRoles {
 }
 
 /** A root net inside a composite net (Def. 7): place p and its control place pc = cp^ε(p). */
-export interface RootRoles {
+interface RootRoles {
   place: string;
   control: string;
 }
@@ -105,7 +105,7 @@ export function incidence(net: Net): Incidence {
   return { pre, post, preOfPlace, postOfPlace };
 }
 
-export function inhibitorArcs(net: Net): Arc[] {
+function inhibitorArcs(net: Net): Arc[] {
   return net.arcs.filter((a) => a.kind === "inhibitor");
 }
 

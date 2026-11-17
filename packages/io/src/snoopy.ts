@@ -46,7 +46,6 @@ import {
   ArcKind,
   ColourSetDecl,
   ConstantDecl,
-  Declarations,
   FTEdge,
   FunctionDecl,
   FTNode,
@@ -145,7 +144,7 @@ interface AmbientMarker {
 }
 
 /** The net description, with the ambient marker line for APNs and T-APNs. */
-export function withAmbientMarker(net: Net): string {
+function withAmbientMarker(net: Net): string {
   const text = net.comment ?? "";
   if (net.netClass !== "apn" && net.netClass !== "tapn") return text;
   const m: AmbientMarker = { netClass: net.netClass };
@@ -157,7 +156,7 @@ export function withAmbientMarker(net: Net): string {
 }
 
 /** Apply and remove the ambient marker of an imported coloured net, if its description has one. */
-export function readAmbientMarker(net: Net): void {
+function readAmbientMarker(net: Net): void {
   const match = AMBIENT_MARKER.exec(net.comment ?? "");
   if (!match || !isColoured(net.netClass)) return;
   let m: AmbientMarker;
@@ -452,7 +451,7 @@ class SnoopyImporter {
   constructor(
     private root: XNode,
     private netClass: NetClass,
-    private options: SnoopyOptions,
+    options: SnoopyOptions,
   ) {
     this.scale = options.scale ?? 2;
     this.coloured = isColoured(netClass);
@@ -1035,7 +1034,7 @@ function formatSound(s: NonNullable<Transition["sound"]>): string {
 // Export
 
 /** Snoopy expression syntax: & | ! instead of and/&&, or/||, not; = and <> for comparisons. */
-export function toSnoopyExpression(s: string): string {
+function toSnoopyExpression(s: string): string {
   let out = "";
   let i = 0;
   while (i < s.length) {
@@ -1061,7 +1060,7 @@ export function toSnoopyExpression(s: string): string {
 }
 
 /** Splits a multiset expression at top-level "++". */
-export function splitMultiset(s: string): string[] {
+function splitMultiset(s: string): string[] {
   const parts: string[] = [];
   let depth = 0;
   let start = 0;
@@ -1534,7 +1533,7 @@ class SnoopyExporter {
     this.writeAttr(4, "Name", m.name, nameGraphics);
     if (!m.coarse) {
       this.writeAttr(4, "ID", String(this.classId(d.cls)), gs({ show: false, xoff: 25, yoff: 20 }));
-      if (isPlace) this.writePlaceAttrs(d, m as Place, gs);
+      if (isPlace) this.writePlaceAttrs(m as Place, gs);
       else this.writeTransitionAttrs(d, m as Transition, gs);
       this.writeAttr(4, "Logic", d.logical && d.graphics.length > 1 ? "1" : "0", []);
     }
@@ -1554,7 +1553,7 @@ class SnoopyExporter {
     return this.net.places.find((p) => p.id === id) ?? this.net.transitions.find((t) => t.id === id);
   }
 
-  private writePlaceAttrs(d: DataNode, p: Place, gs: (e: { show: boolean; xoff?: number; yoff?: number }) => Parameters<SnoopyExporter["writeAttrGraphics"]>[1]) {
+  private writePlaceAttrs(p: Place, gs: (e: { show: boolean; xoff?: number; yoff?: number }) => Parameters<SnoopyExporter["writeAttrGraphics"]>[1]) {
     if (this.layout.coloured) {
       const cs = p.colourSet ?? "Dot";
       const rows = this.markingRows(p.marking, cs);

@@ -50,6 +50,10 @@ Where to build each OS's installers:
 - **Windows** (NSIS): best built on Windows. You can build from Linux or macOS with `wine`
   installed. Use `CSC_LINK`/`CSC_KEY_PASSWORD` for code signing.
 
+On GitHub, the **Desktop release** workflow (`.github/workflows/desktop-release.yml`) does all three
+whenever the version changes and attaches the installers to a release `v<version>`. Signing secrets
+are optional; without them the installers are unsigned.
+
 The app icon is `resources/icon.png` (1024×1024, the Donwinne logo); electron-builder derives the
 Windows and macOS icons from it. Add `icon.icns` or `icon.ico` beside it to use hand-tuned versions.
-The `linux.maintainer` email and `homepage` in `package.json` are placeholders.
+The deb package needs `homepage` (set to the GitHub repository) and `linux.maintainer` in `package.json`.

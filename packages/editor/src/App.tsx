@@ -35,6 +35,7 @@ import { MenuCommand, desktop } from "./platform";
 import { propsDocked, useScreenClass, useVisualViewport } from "./responsive";
 import { ArcKind, isAmbient, isFaultTree } from "@pns/core";
 import { cmdConstructTapn, fireMaximalStep, openAmbientDialog } from "./ambient";
+import { openDocs } from "./docs/DocsDialog";
 
 function isTyping(e: KeyboardEvent) {
   const t = e.target as HTMLElement;
@@ -115,6 +116,12 @@ export function runCommand(c: MenuCommand) {
       return cmdNew("apn");
     case "ctl":
       return useStore.setState({ dialog: "ctl" });
+    case "slice":
+      return useStore.setState({ dialog: "slice" });
+    case "framework":
+      return useStore.setState({ dialog: "framework" });
+    case "docs":
+      return openDocs();
     case "ambient:crg":
       return openAmbientDialog("crg");
     case "ambient:props":
@@ -215,6 +222,11 @@ export function App() {
         else if (k === "=" || k === "+") (e.preventDefault(), zoomBy(1.25));
         else if (k === "-") (e.preventDefault(), zoomBy(1 / 1.25));
         else if (k === "0") (e.preventDefault(), requestFit());
+        return;
+      }
+      if (e.key === "F1") {
+        e.preventDefault();
+        if (s.dialog !== "docs") openDocs();
         return;
       }
       if (isTyping(e)) return;

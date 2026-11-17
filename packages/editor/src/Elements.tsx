@@ -35,7 +35,7 @@ type SortValue = string | number | undefined;
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 /** Numbers compare as numbers, everything else as text with digit runs compared by value (P2 before P10). */
-export function compareValues(a: SortValue, b: SortValue): number {
+function compareValues(a: SortValue, b: SortValue): number {
   if (typeof a === "number" && typeof b === "number") return a - b;
   return collator.compare(String(a ?? ""), String(b ?? ""));
 }

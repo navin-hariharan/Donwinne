@@ -199,7 +199,7 @@ export async function cmdExportPnml() {
 }
 
 /** Standalone SVG of the net, with the simulation marking if one is showing. */
-export function netSvg(full: Net, page: string | null = useStore.getState().page): string {
+function netSvg(full: Net, page: string | null = useStore.getState().page): string {
   const cn = compiled(full);
   const pv = pageView(full, page);
   const net = pv.net;
@@ -268,7 +268,7 @@ export function snoopyExtension(net: Net): string {
   return io.snoopyExtension(net.netClass, net);
 }
 
-export interface ExportFormat {
+interface ExportFormat {
   id: string;
   label: string;
   ext: (net: Net) => string;

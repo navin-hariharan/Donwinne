@@ -3,6 +3,9 @@
 apps/desktop/release
 apps/desktop/build
 apps/desktop/web
-docs
+# The docs pages and their pictures are bundled into the app (Help > Docs); the example
+# models and the thesis PDF are not needed to build it.
+docs/examples
+docs/thesis
 *.log
 .git

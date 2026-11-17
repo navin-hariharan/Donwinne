@@ -3,7 +3,7 @@ import { isFaultTree } from "@pns/core";
 import { PLACE_R, ftSize, pageView, transSize } from "./geometry";
 import { applyLayout, toast, useStore } from "./store";
 
-export type LayoutStyle = "layered" | "layeredDown" | "force" | "grid";
+type LayoutStyle = "layered" | "layeredDown" | "force" | "grid";
 
 /**
  * Lay out the current page with ELK (the Eclipse Layout Kernel). Layered layout follows the

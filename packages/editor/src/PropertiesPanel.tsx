@@ -20,7 +20,6 @@ import {
 import {
   adjustTokens,
   alignSelection,
-  compiled,
   problemsOf,
   deleteSelection,
   reverseArc,
@@ -122,7 +121,7 @@ export function PropertiesPanel() {
       ),
     ].filter(Boolean);
     return (
-      <aside className="panel props">
+      <aside className="panel props" aria-label="Properties" tabIndex={0}>
         <h2>{selection.length} items selected</h2>
         <p className="muted">
           {parts.length > 1
@@ -211,7 +210,7 @@ export function PropertiesPanel() {
     const a = net.faultTree!.nodes.find((n) => n.id === ftEdge.source)?.name;
     const b = net.faultTree!.nodes.find((n) => n.id === ftEdge.target)?.name;
     return (
-      <aside className="panel props">
+      <aside className="panel props" aria-label="Properties" tabIndex={0}>
         <h2>Connection</h2>
         <p className="muted">
           {a} feeds {b}
@@ -226,7 +225,7 @@ export function PropertiesPanel() {
   }
   if (note)
     return (
-      <aside className="panel props">
+      <aside className="panel props" aria-label="Properties" tabIndex={0}>
         <h2>Note</h2>
         <fieldset disabled={readOnly}>
           <Field label="Text">
@@ -249,7 +248,7 @@ export function PropertiesPanel() {
       (x) => x.parent === n.id,
     ).length;
     return (
-      <aside className="panel props">
+      <aside className="panel props" aria-label="Properties" tabIndex={0}>
         <h2>Subnet</h2>
         <fieldset disabled={readOnly}>
           <Field label="Name">
@@ -287,7 +286,7 @@ export function PropertiesPanel() {
   if (place) {
     const k = (f: string) => `place-${place.id}-${f}`;
     return (
-      <aside className="panel props">
+      <aside className="panel props" aria-label="Properties" tabIndex={0}>
         <h2>Place</h2>
         <fieldset disabled={readOnly}>
           <Field label="Name">
@@ -476,7 +475,7 @@ export function PropertiesPanel() {
   if (trans) {
     const k = (f: string) => `trans-${trans.id}-${f}`;
     return (
-      <aside className="panel props">
+      <aside className="panel props" aria-label="Properties" tabIndex={0}>
         <h2>Transition</h2>
         <fieldset disabled={readOnly}>
           <Field label="Name">
@@ -591,7 +590,7 @@ export function PropertiesPanel() {
       net.transitions.find((t) => t.id === arc.target)?.name;
     const fromPlace = net.places.some((p) => p.id === arc.source);
     return (
-      <aside className="panel props">
+      <aside className="panel props" aria-label="Properties" tabIndex={0}>
         <h2>Arc</h2>
         <p className="muted">
           {src} → {tgt}
@@ -671,7 +670,7 @@ export function PropertiesPanel() {
 
   // Nothing selected: the net itself.
   return (
-    <aside className="panel props">
+    <aside className="panel props" aria-label="Properties" tabIndex={0}>
       <h2>Net</h2>
       <fieldset disabled={readOnly}>
         <Field label="Name">
@@ -1389,7 +1388,7 @@ function DeclarationsEditor({
 
 // ---------- shared pieces ----------
 
-export function ColorPicker({
+function ColorPicker({
   ids,
   label = "Colour",
 }: {
@@ -1616,7 +1615,7 @@ function FTNodeProps({ id, readOnly }: { id: string; readOnly: boolean }) {
   const k = (f: string) => `ft-${id}-${f}`;
   const leaf = n.type === "basic" || n.type === "undeveloped";
   return (
-    <aside className="panel props">
+    <aside className="panel props" aria-label="Properties" tabIndex={0}>
       <h2>{FT_TYPE_LABEL[n.type]}</h2>
       <fieldset disabled={readOnly}>
         <Field label="Name">

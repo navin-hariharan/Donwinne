@@ -1,6 +1,6 @@
 // Electron main process for Donwinne.
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, screen, shell, type MenuItemConstructorOptions, type WebContents } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, screen, session, shell, type IpcMainEvent, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type WebContents } from "electron";
 import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -246,8 +246,39 @@ async function askSavePath(sender: WebContents, defaultPath: string, filters: Fi
   return res.filePath;
 }
 
+/** IPC is only answered for the app's own page, never for another frame or a page navigated elsewhere. */
+function fromApp(e: IpcMainEvent | IpcMainInvokeEvent): boolean {
+  const url = e.senderFrame?.url;
+  return !!url && e.senderFrame === e.sender.mainFrame && isAppUrl(url);
+}
+
+/** ipcMain.handle that rejects calls from anything but the app's own page. */
+function handle<A extends unknown[], R>(channel: string, fn: (e: IpcMainInvokeEvent, ...args: A) => R): void {
+  ipcMain.handle(channel, (e, ...args) => {
+    if (!fromApp(e)) throw new Error("Blocked an IPC call from outside the app");
+    return fn(e, ...(args as A));
+  });
+}
+
+/** ipcMain.on that ignores messages from anything but the app's own page. */
+function listen<A extends unknown[]>(channel: string, fn: (e: IpcMainEvent, ...args: A) => void): void {
+  ipcMain.on(channel, (e, ...args) => {
+    if (fromApp(e)) fn(e, ...(args as A));
+  });
+}
+
+/**
+ * The app needs no camera, microphone, location, notifications or other device access. Only
+ * writing to the clipboard (Help > Docs copies section links) is allowed; everything else is denied.
+ */
+function restrictPermissions(): void {
+  const allowed = new Set(["clipboard-sanitized-write"]);
+  session.defaultSession.setPermissionRequestHandler((wc, permission, callback) => callback(allowed.has(permission) && isAppUrl(wc.getURL())));
+  session.defaultSession.setPermissionCheckHandler((wc, permission) => allowed.has(permission) && !!wc && isAppUrl(wc.getURL()));
+}
+
 function registerIpc(): void {
-  ipcMain.handle(IPC.openFile, async (e, filters: FileFilter[]): Promise<OpenedFile | null> => {
+  handle(IPC.openFile, async (e, filters: FileFilter[]): Promise<OpenedFile | null> => {
     const win = windowOf(e.sender);
     const opts: Electron.OpenDialogOptions = {
       properties: ["openFile"],
@@ -262,7 +293,7 @@ function registerIpc(): void {
     return readOpenedFile(p);
   });
 
-  ipcMain.handle(
+  handle(
     IPC.saveFile,
     async (e, filePath: string | null, content: string, suggestedName: string, filters: FileFilter[]) => {
       let target: string | null = typeof filePath === "string" && filePath ? path.resolve(filePath) : null;
@@ -278,25 +309,26 @@ function registerIpc(): void {
     },
   );
 
-  ipcMain.handle(IPC.exportFile, async (e, suggestedName: string, data: string | Uint8Array, filters: FileFilter[]) => {
+  handle(IPC.exportFile, async (e, suggestedName: string, data: string | Uint8Array, filters: FileFilter[]) => {
     const target = await askSavePath(e.sender, defaultPathFor(suggestedName), filters);
     if (!target) return false;
     if (typeof data === "string") await fs.writeFile(target, data, "utf8");
-    else await fs.writeFile(target, Buffer.from(data.buffer, data.byteOffset, data.byteLength));
+    else if (data instanceof Uint8Array) await fs.writeFile(target, Buffer.from(data.buffer, data.byteOffset, data.byteLength));
+    else throw new Error("Export data must be text or bytes");
     return true;
   });
 
-  ipcMain.on(IPC.setDirty, (e, dirty: boolean) => {
+  listen(IPC.setDirty, (e, dirty: boolean) => {
     dirtyState.set(e.sender.id, !!dirty);
     windowOf(e.sender)?.setDocumentEdited(!!dirty); // macOS close-button dot; no-op elsewhere
   });
 
-  ipcMain.on(IPC.setTitle, (e, title: string) => {
+  listen(IPC.setTitle, (e, title: string) => {
     const t = String(title ?? "").trim();
     windowOf(e.sender)?.setTitle(t || APP_NAME);
   });
 
-  ipcMain.handle(IPC.nativeEdit, (e, cmd: NativeEditCommand) => {
+  handle(IPC.nativeEdit, (e, cmd: NativeEditCommand) => {
     const wc = e.sender;
     if (cmd === "undo") wc.undo();
     else if (cmd === "redo") wc.redo();
@@ -304,7 +336,7 @@ function registerIpc(): void {
     else if (cmd === "selectAll") wc.selectAll();
   });
 
-  ipcMain.handle(IPC.takePendingOpen, async (e) => {
+  handle(IPC.takePendingOpen, async (e) => {
     openPathReady.add(e.sender.id);
     const paths = pendingOpen.splice(0);
     const files: OpenedFile[] = [];
@@ -414,6 +446,7 @@ function buildMenu(): Menu {
       item("Reachability Graph…", "reachability"),
       item("Net Properties and Invariants…", "analyse"),
       item("Model Checking (CTL)…", "ctl"),
+      item("Slice the Net…", "slice"),
       { type: "separator" },
       item("Unfold to an Uncoloured Net", "unfold"),
       { type: "separator" },
@@ -430,6 +463,8 @@ function buildMenu(): Menu {
           { type: "separator" },
           item("Building Blocks…", "ambient:blocks"),
           item("Compose Steps…", "ambient:compose"),
+          { type: "separator" },
+          item("Framework Pipeline (APN → T-APN → Slice)…", "framework"),
         ],
       },
     ],
@@ -440,7 +475,7 @@ function buildMenu(): Menu {
   template.push({
     role: "help",
     label: "&Help",
-    submenu: [item("Quick Guide", "help"), item(`About ${APP_NAME}`, "about")],
+    submenu: [item("Docs", "docs", "F1"), item("Quick Guide", "help"), { type: "separator" }, item(`About ${APP_NAME}`, "about")],
   });
 
   return Menu.buildFromTemplate(template);
@@ -482,6 +517,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   void app.whenReady().then(() => {
+    restrictPermissions();
     registerIpc();
     Menu.setApplicationMenu(buildMenu());
     mainWindow = createWindow();

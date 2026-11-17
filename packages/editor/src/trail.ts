@@ -5,7 +5,7 @@
 import type { Net } from "@pns/core";
 import type { SimStep } from "./store";
 
-export interface Trail {
+interface Trail {
   /** Element id → strength between 0 and 1: 1 for the latest firing, fading for older ones. */
   strength: Map<string, number>;
   /** Number of firings (or steps) the trail covers. */

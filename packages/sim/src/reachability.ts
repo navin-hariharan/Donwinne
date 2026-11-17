@@ -8,6 +8,11 @@ export interface RGState {
   marking: Record<string, string>;
   /** No transition is enabled. */
   dead: boolean;
+  /**
+   * Some transition could not be checked here (an evaluation error or too many bindings), so the
+   * state's successors may be incomplete. Such a state is never reported dead.
+   */
+  unresolved?: boolean;
 }
 
 export interface RGEdge {
@@ -21,7 +26,7 @@ export interface RGEdge {
 export interface ReachabilityGraph {
   states: RGState[];
   edges: RGEdge[];
-  /** The state limit was reached; the graph is incomplete. */
+  /** The state limit was reached, or some state is unresolved; the graph is incomplete. */
   truncated: boolean;
   /** Evaluation problems met while exploring (e.g. too many bindings). */
   errors: string[];
@@ -50,9 +55,13 @@ export function reachabilityGraph(net: Net, opts: { maxStates?: number } = {}): 
   for (let i = 0; i < markings.length; i++) {
     const M = markings[i];
     let dead = true;
+    let unresolved = false;
     for (const t of cn.transitions) {
       const r = enabledBindings(cn, t.index, M);
-      if (r.error) errors.add(`${t.name}: ${r.error}`);
+      if (r.error) {
+        errors.add(`${t.name}: ${r.error}`);
+        unresolved = true;
+      }
       for (const b of r.bindings) {
         dead = false;
         const M2 = fire(cn, t.index, b, M);
@@ -70,7 +79,8 @@ export function reachabilityGraph(net: Net, opts: { maxStates?: number } = {}): 
         edges.push({ from: i, to, label: t.name + showBinding(b), transitionId: t.id });
       }
     }
-    states.push({ id: i, marking: Object.fromEntries(names.map((n) => [n.name, showTokens(cn, M[n.slot])])), dead });
+    if (unresolved) truncated = true;
+    states.push({ id: i, marking: Object.fromEntries(names.map((n) => [n.name, showTokens(cn, M[n.slot])])), dead: dead && !unresolved, ...(unresolved ? { unresolved } : {}) });
   }
   return { states, edges, truncated, errors: [...errors] };
 }

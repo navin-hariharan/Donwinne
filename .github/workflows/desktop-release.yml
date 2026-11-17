@@ -1,0 +1,163 @@
+# Desktop release: builds the Windows, macOS and Linux installers and publishes them as a GitHub
+# release whenever the app's version changes.
+#
+# The version is the "version" in apps/desktop/package.json (kept equal to every other
+# package.json; a test checks it). On each push to main the workflow looks for a tag v<version>.
+# If there is none, the version is new: it runs the tests, builds the installers on each OS and
+# creates the release v<version> with them. If the tag already exists, nothing is built.
+#
+# To release: bump the version (for example 0.4.0 -> 0.5.0) in the package.json files and in
+# packages/editor/src/version.ts, and push to main. "Run workflow" on the Actions tab does the same
+# check by hand.
+#
+# Code signing is optional. Without these secrets the installers are built unsigned:
+#   macOS:   MAC_CSC_LINK, MAC_CSC_KEY_PASSWORD (Developer ID certificate, base64 .p12),
+#            APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID (notarization)
+#   Windows: WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD (code-signing certificate, base64 .pfx)
+name: Desktop release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Check the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      release: ${{ steps.check.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        name: Is there a release for this version?
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          # Every package.json carries the same version.
+          for f in package.json apps/web/package.json packages/*/package.json; do
+            v=$(node -p "require('./$f').version")
+            if [ "$v" != "$version" ]; then
+              echo "::error file=$f::version $v differs from apps/desktop/package.json ($version)"
+              exit 1
+            fi
+          done
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "v$version is already released; nothing to do." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "New version $version: building the desktop installers." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  test:
+    name: Test
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: [version, test]
+    if: needs.version.outputs.release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+            target: dist:linux
+          - name: Windows
+            os: windows-latest
+            target: dist:win
+          - name: macOS
+            os: macos-latest
+            target: dist:mac
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build the web app
+        run: pnpm build
+      - name: Build the installers
+        shell: bash
+        run: |
+          # electron-builder reads an empty CSC_LINK as a certificate: leave unset what is not configured.
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            [ -n "${!v}" ] || unset "$v"
+          done
+          # Without a certificate, build unsigned instead of searching the keychain.
+          [ -n "${CSC_LINK:-}" ] || export CSC_IDENTITY_AUTO_DISCOVERY=false
+          pnpm --filter @pns/desktop ${{ matrix.target }}
+        env:
+          CSC_LINK: ${{ matrix.name == 'macOS' && secrets.MAC_CSC_LINK || matrix.name == 'Windows' && secrets.WIN_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.name == 'macOS' && secrets.MAC_CSC_KEY_PASSWORD || matrix.name == 'Windows' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+
+  release:
+    name: Publish the release
+    needs: [version, build]
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          path: installers
+          merge-multiple: true
+      - name: List the installers
+        run: ls -l installers
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Donwinne ${{ needs.version.outputs.version }}
+          generate_release_notes: true
+          body: |
+            Desktop installers for Donwinne ${{ needs.version.outputs.version }}.
+
+            | System | File |
+            | --- | --- |
+            | Windows (x64) | `donwinne-${{ needs.version.outputs.version }}-win-x64.exe` |
+            | macOS (Apple silicon) | `donwinne-${{ needs.version.outputs.version }}-mac-arm64.dmg` |
+            | macOS (Intel) | `donwinne-${{ needs.version.outputs.version }}-mac-x64.dmg` |
+            | Linux (x64) | `donwinne-${{ needs.version.outputs.version }}-linux-x86_64.AppImage` or `donwinne-${{ needs.version.outputs.version }}-linux-amd64.deb` |
+          files: installers/*
+          fail_on_unmatched_files: true

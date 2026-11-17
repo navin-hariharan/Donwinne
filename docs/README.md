@@ -10,10 +10,14 @@
 These pages explain how to use Donwinne and how it works inside. Start with the [project README](../README.md) for an
 overview, then read the page for what you want to do.
 
+All of these pages are also inside the app: **Help > Docs** (F1) shows them with a search over every section.
+
 ## Guides
 
 | Page | Read it to learn |
 | --- | --- |
+| [Getting started](getting-started.md) | Opening Donwinne, the screen at a glance, your first net in five steps, saving, the examples, and using the in-app docs |
+| [Every feature, A to Z](feature-index.md) | One line on every feature: what it does, where to find it and its shortcut |
 | [The editor](editor.md) | The window, menus and palette; drawing and editing nets; subnets; the properties and bottom panels; keyboard shortcuts; touch gestures; phones, tablets and the desktop app |
 | [Net classes](net-classes.md) | What each of the 24 net classes means, the six arc types, markings and expressions, Snoopy-style declarations, and fault trees |
 | [Simulation](simulation.md) | The token game, the timed token game, stochastic, continuous, hybrid and fuzzy simulation, plots and unfolding |
@@ -21,10 +25,13 @@ overview, then read the page for what you want to do.
 | [Ambient Petri nets](ambient-petri-nets.md) | Konios's thesis chapter by chapter: APNs, step semantics, the CRG, building blocks, T-APNs, the construction φ, equivalence, verification, and a full walkthrough of the ambient garage |
 | [CTL model checking](ctl.md) | Formula syntax, semantics, witnesses and counterexamples, the 22 property templates, path queries and fault tolerance |
 | [File formats](file-formats.md) | The native `.pns.json` format, Snoopy, PNML, ANDL / CANDL, and every export |
+| [Slicing and the framework](slicing.md) | The twelve slicing algorithms, stubborn sets, and the APN → T-APN → unfolding → slice pipeline, with results on the papers' examples |
+| [Questions and troubleshooting](faq.md) | Answers to common questions and what to do when something does not work as expected |
 | [Architecture](architecture.md) | The packages, the data model, the store, the desktop app, building, testing and extending Donwinne |
 
 ## Suggested reading paths
 
+- **New to Donwinne:** [Getting started](getting-started.md), then [Every feature, A to Z](feature-index.md).
 - **New to Petri nets:** [Net classes](net-classes.md#the-basic-firing-rule), then [The editor](editor.md#drawing-a-net), then [Simulation](simulation.md).
 - **Coming from Snoopy:** [Net classes](net-classes.md#summary-of-classes), [File formats](file-formats.md#snoopy) and the [keyboard shortcuts](editor.md#keyboard-shortcuts).
 - **Studying ambient systems:** the [thesis](thesis/Konios-2015-Modelling-and-Verification-of-Ambient-Systems-using-Petri-Nets.pdf), then [Ambient Petri nets](ambient-petri-nets.md) and [CTL model checking](ctl.md).
@@ -66,6 +73,9 @@ The mark draws a "D" as a Petri net: the stem is a transition, and two arcs lead
 | --- | --- | --- |
 | [`architecture.svg`](assets/diagrams/architecture.svg) | The packages and how they depend on each other | [Architecture](architecture.md) |
 | [`apn-pipeline.svg`](assets/diagrams/apn-pipeline.svg) | From building blocks to an APN, its CRG, the T-APN, equivalence and verification | [Ambient Petri nets](ambient-petri-nets.md) |
+| [`firing-rule.svg`](assets/diagrams/firing-rule.svg) | A transition firing: tokens before and after | [Net classes](net-classes.md) |
+| [`slicing.svg`](assets/diagrams/slicing.svg) | A net, the criterion places and the slice that keeps them | [Slicing and the framework](slicing.md) |
+| [`stubborn-sets.svg`](assets/diagrams/stubborn-sets.svg) | How stubborn sets explore fewer interleavings | [Slicing and the framework](slicing.md#stubborn-sets) |
 
 ### Animations (`assets/gifs/`)
 
@@ -84,10 +94,12 @@ The mark draws a "D" as a Petri net: the stem is a transition, and two arcs lead
 
 | Topic | Files |
 | --- | --- |
+| Getting started | `start-1-nodes.png`, `start-2-arcs.png`, `start-3-tokens.png`, `start-4-simulate.png`, `start-5-analyse.png`, `docs-search.png` |
 | Overview | `hero-light.png`, `hero-dark.png`, `editor-tour.png`, `dark-mode.png`, `desktop-app.png` |
 | Editing | `new-dialog.png`, `class-menu.png`, `arc-menu.png`, `file-menu.png`, `properties-panel.png`, `declarations.png`, `element-table.png`, `subnets.png`, `subnet-parent.png`, `help.png` |
 | Simulation | `token-game.png`, `token-trail.png`, `timed-token-game.png`, `coloured-simulation-dark.png`, `stochastic-plot.png`, `continuous-plot.png`, `hybrid-plot.png` |
 | Analysis | `reachability-graph.png`, `net-properties.png`, `invariants.png`, `fault-tree.png`, `fault-tree-analysis.png` |
 | Ambient Petri nets | `fig-3-1.png`, `ambient-garage.png`, `ambient-conference.png`, `step-game.png`, `crg.png`, `apn-properties.png`, `building-blocks.png`, `compose.png`, `tapn-construction.png`, `tapn-net.png`, `equivalence.png` |
+| Slicing | `slicing-dialog.png`, `framework-pipeline.png`, `framework-replay.png`, `slice-opened.png` |
 | Verification | `ctl-dialog.png`, `ctl-templates.png`, `paths.png`, `fault-tolerance.png` |
 | Devices | `phone-portrait.png`, `phone-landscape.png`, `tablet.png` |

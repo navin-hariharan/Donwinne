@@ -2,8 +2,8 @@ import type { FTNode, Net, Note, Place, Point, Transition } from "@pns/core";
 import { isFaultTree } from "@pns/core";
 
 export const PLACE_R = 20;
-export const TRANS_W = 14;
-export const TRANS_H = 42;
+const TRANS_W = 14;
+const TRANS_H = 42;
 export const GRID = 10;
 
 export type NodeShape =
@@ -246,7 +246,7 @@ function freeSpot(p: Point, occupied: Point[], centre: Point): Point {
   return { x: p.x + dx * 1600, y: p.y + dy * 1600 };
 }
 
-export interface PageView {
+interface PageView {
   /** The nodes, arcs and notes drawn on this page. Arcs to hidden nodes point at their coarse node or a ghost. */
   net: Net;
   /** Ghost nodes: stand-ins inside a subnet for nodes outside it. Id is "ghost:" + the real id. */
@@ -386,7 +386,7 @@ export function sameButLayout(a: Net, b: Net): boolean {
 // ---------- level of detail ----------
 
 /** Labels that would come out smaller than this on screen (in pixels) are left out of the canvas. */
-export const LABEL_MIN_PX = 6;
+const LABEL_MIN_PX = 6;
 
 /**
  * The smallest label font size (in drawing units) still shown at this zoom; 0 shows every label.
@@ -400,7 +400,7 @@ export function labelCutoff(zoom: number): number {
 }
 
 /** Names longer than this are cut short on the canvas. */
-export const NAME_MAX = 20;
+const NAME_MAX = 20;
 
 export function shortName(s: string, max = NAME_MAX): string {
   return s.length > max ? s.slice(0, max - 1) + "…" : s;

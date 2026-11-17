@@ -1,14 +1,13 @@
 // Music nets: transitions play a note when they fire (Web Audio, no samples needed).
 
 export const INSTRUMENTS = ["piano", "sine", "square", "sawtooth", "triangle", "drum"] as const;
-export type Instrument = (typeof INSTRUMENTS)[number];
 
 const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 export const NOTE_NAMES: string[] = [];
 for (let o = 2; o <= 6; o++) for (const n of NAMES) NOTE_NAMES.push(`${n}${o}`);
 
 /** Frequency of a note name such as A4 (440 Hz) or C#5. */
-export function noteFrequency(note: string): number {
+function noteFrequency(note: string): number {
   const m = /^([A-G])(#|b)?(-?\d)$/.exec(note.trim());
   if (!m) return 440;
   let i = NAMES.indexOf(m[1]) + (m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0);

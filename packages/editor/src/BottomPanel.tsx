@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { Net, disabledReasons, enabledBindings, isColoured, isFaultTree, isFuzzy, showBinding, showTokens, timeBase } from "@pns/core";
 import { SolverName, Trace, simulateAsync, traceToCsv } from "@pns/sim";
 import { faultTreeToPetriNet, importanceMeasures, layoutFaultTree, reliabilityCurve, topEventAnalysis, ImportanceMeasure, TopEventResult } from "@pns/ft";
-import { advanceTime, compiled, enterPage, fireTransition, fmtTime, loadNet, problemsOf, select, simGoto, timedEnabled, toast, useStore, edit } from "./store";
+import { advanceTime, compiled, fireTransition, fmtTime, problemsOf, select, simGoto, timedEnabled, toast, useStore, edit } from "./store";
 import { LinePlot, PlotSeries, SERIES_COLORS, fmt } from "./Plot";
 import { downloadText } from "./fileOps";
 import { WATERMARK_HEIGHT, markSvgElement } from "./watermark";
@@ -53,14 +53,16 @@ export function BottomPanel() {
       />
     )}
     <section className={`bottom ${open ? "" : "collapsed"}`} style={open ? { height } : undefined}>
-      <div className="tabs" role="tablist">
-        {visible.map((t) => (
-          <button key={t.id} role="tab" aria-selected={current === t.id && open} className={current === t.id && open ? "on" : ""} onClick={() => setPanel(t.id)}>
-            {t.label}
-            {t.id === "problems" && errors > 0 && <span className="badge error">{errors}</span>}
-            {t.id === "problems" && warnings > 0 && <span className="badge warning">{warnings}</span>}
-          </button>
-        ))}
+      <div className="tabs">
+        <div className="tab-list" role="tablist" aria-label="Panels">
+          {visible.map((t) => (
+            <button key={t.id} role="tab" aria-selected={current === t.id && open} className={current === t.id && open ? "on" : ""} onClick={() => setPanel(t.id)}>
+              {t.label}
+              {t.id === "problems" && errors > 0 && <span className="badge error">{errors}</span>}
+              {t.id === "problems" && warnings > 0 && <span className="badge warning">{warnings}</span>}
+            </button>
+          ))}
+        </div>
         <span className="spacer" />
         <button className="icon collapse-btn" title={open ? "Hide panel (B)" : "Show panel (B)"} aria-label={open ? "Hide panel" : "Show panel"} onClick={() => useStore.setState({ bottomOpen: !open })}>
           {open ? "▾" : "▴"}
@@ -150,8 +152,8 @@ function SimPanel() {
   const tinfo = ts ? timedEnabled(ts) : null;
   return (
     <div className="sim-panel">
-      <div className="sim-col">
-        <h4>History ({sim.length - 1} steps)</h4>
+      <div className="sim-col" tabIndex={0}>
+        <h4>History ({sim.length - 1} {sim.length === 2 ? "step" : "steps"})</h4>
         <ol className="history" ref={listRef}>
           {sim.map((s, i) => (
             <li key={i} className={i === simIndex ? "current" : i > simIndex ? "future" : ""} onClick={() => simGoto(i)}>
@@ -161,7 +163,7 @@ function SimPanel() {
           ))}
         </ol>
       </div>
-      <div className="sim-col">
+      <div className="sim-col" tabIndex={0}>
         {ts && tinfo && (
           <div className="clock-box">
             <div>
@@ -205,7 +207,7 @@ function SimPanel() {
           </details>
         )}
       </div>
-      <div className="sim-col">
+      <div className="sim-col" tabIndex={0}>
         <h4>Marking</h4>
         <table className="marking">
           <tbody>
@@ -227,7 +229,7 @@ function SimPanel() {
 // ---------- quantitative simulation ----------
 
 /** Remove coarse (subnet) nodes, which take no part in simulation. */
-export function flatNet(net: Net): Net {
+function flatNet(net: Net): Net {
   const coarse = new Set([...net.places, ...net.transitions].filter((n) => n.coarse).map((n) => n.id));
   if (!coarse.size) return net;
   return {
@@ -501,7 +503,7 @@ function exportPlotImage(name: string) {
  * A number box that lets you type freely (even clear it) and only passes on values in range;
  * on leaving the box it shows the value in use again.
  */
-export function NumInput({ value, onChange, min = -Infinity, max = Infinity, integer, style }: { value: number; onChange: (v: number) => void; min?: number; max?: number; integer?: boolean; style?: React.CSSProperties }) {
+function NumInput({ value, onChange, min = -Infinity, max = Infinity, integer, style }: { value: number; onChange: (v: number) => void; min?: number; max?: number; integer?: boolean; style?: React.CSSProperties }) {
   const [draft, setDraft] = useState<string | null>(null);
   const valid = (t: string) => {
     const v = Number(t);

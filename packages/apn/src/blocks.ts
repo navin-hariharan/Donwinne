@@ -14,7 +14,7 @@ export type Colour = string | number;
 export const BW: ColourSetDecl = { name: "BW", type: "enum", values: ["b", "w"] };
 
 /** Options shared by every generator. */
-export interface ColourOptions {
+interface ColourOptions {
   /** The colour set of every place and of every transition's mode. Default {@link BW}. */
   colourSet?: ColourSetDecl;
   /** Name of the mode variable written on every arc. Default "x". */
@@ -42,7 +42,7 @@ export interface DecisionPoint {
 }
 
 /** Names and comments of a step: starting place, step transition, finishing place and control place. */
-export interface StepOptions extends ColourOptions {
+interface StepOptions extends ColourOptions {
   /** Starting place p_s. Default "ps". */
   start?: string;
   /** Finishing place p_f. Default "pf". */
@@ -71,7 +71,7 @@ export interface BasicStepOptions extends StepOptions {
 }
 
 /** Options of the root net (Def. 7). */
-export interface RootOptions extends ColourOptions {
+interface RootOptions extends ColourOptions {
   /** The place p, marked with the initial users. Default "p". */
   place?: string;
   /** Its control place p_c = cp^ε(p). Default `ctrl_${place}`. */
@@ -119,7 +119,7 @@ export function stepHeight(n: number): number {
 }
 
 /** Small builder for the nets made here. */
-export class NetBuilder {
+class NetBuilder {
   readonly net: Net;
   private readonly cs: string;
   private readonly cap: number;
@@ -214,9 +214,6 @@ export function unidirectionalStep(opts: StepOptions & { users?: Colour[] } = {}
 export function basicStepNet(opts: BasicStepOptions = {}): Net {
   return stepNet(opts, false);
 }
-
-/** The unidirectional step with control system of Fig. 4.2: the same net as {@link basicStepNet}. */
-export const unidirectionalStepWithControl = basicStepNet;
 
 /**
  * The one step net of Def. 11: a basic step net whose gluing places are both p_s and p_f. It is the

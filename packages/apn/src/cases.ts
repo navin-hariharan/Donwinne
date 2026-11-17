@@ -44,7 +44,7 @@ import { backwardCompose, forwardCompose, tidy } from "./compose";
 import { constructTapn } from "./construction";
 
 /** The structuring set of both case studies: user identities 1 and 2. */
-export const USERS: ColourSetDecl = { name: "User", type: "int", min: 1, max: 2 };
+const USERS: ColourSetDecl = { name: "User", type: "int", min: 1, max: 2 };
 
 type Row = [users: Colour[], database: string, emptying: string, response: string, retrieve: string, responseComment: string, databaseComment: string];
 
@@ -252,7 +252,7 @@ function garageRoot(users: Colour[], blocked: Colour[]): Net {
   });
 }
 
-export interface CaseOptions {
+interface CaseOptions {
   /** Users present at the start. Default [1, 2]. */
   users?: Colour[];
   /** Users stopped at the root (unauthorised), Sec. 4.5.1 and 4.5.2. Default none. */

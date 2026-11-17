@@ -20,7 +20,7 @@ import { Arc, ColourSetDecl, Multiset, Net, Place, Problem, Transition, Value, V
 import { ambientInitialMarking, compileAmbient } from "./semantics";
 
 /** The parts of a composite step net (Sec. 6.2.1), by element id. */
-export interface StepNetRoles {
+interface StepNetRoles {
   /** P_R: response places. */
   response: string[];
   /** P_D: database places. */
@@ -126,7 +126,7 @@ export function classifyStepNet(net: Net): StepNetRoles {
 }
 
 /** Where an arc of φ(N) comes from. */
-export interface ArcOrigin {
+interface ArcOrigin {
   /** The arc of N it copies or replaces; absent for new arcs. */
   from?: string;
   /**
@@ -139,7 +139,7 @@ export interface ArcOrigin {
 }
 
 /** How φ(N)'s elements relate to N's. */
-export interface ConstructionMapping {
+interface ConstructionMapping {
   /** φ(N) place id -> N place id (P' = P: the same ids). */
   places: Record<string, string>;
   /** φ(N) transition id -> N transition id (T' = T: the same ids). */
@@ -154,7 +154,7 @@ export interface ConstructionMapping {
 }
 
 /** The sets of Sec. 6.3, by element name, for display and checking against the thesis. */
-export interface ConstructionSets {
+interface ConstructionSets {
   /** Pre_REP: the inhibitor arcs (p, t) of N that became directed arcs. */
   preRep: [string, string][];
   /** Post_NEW: the new post arcs (t, p). */

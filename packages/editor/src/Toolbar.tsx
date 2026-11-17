@@ -30,6 +30,7 @@ import {
 import { stepRandom } from "./simulation";
 import { cmdConstructTapn, fireMaximalStep, openAmbientDialog, useAmbient } from "./ambient";
 import { propsDocked, useScreenClass } from "./responsive";
+import { openDocs } from "./docs/DocsDialog";
 
 export const ARC_KIND_INFO: Record<ArcKind, { label: string; help: string; key: string }> = {
   normal: { label: "Normal", help: "Consumes tokens from the place, or produces them into it.", key: "1" },
@@ -192,7 +193,7 @@ export function FTIcon({ type, size = 22 }: { type: FTNodeType; size?: number })
   }
 }
 
-export function ArcHeadIcon({ kind }: { kind: ArcKind }) {
+function ArcHeadIcon({ kind }: { kind: ArcKind }) {
   const stroke = "currentColor";
   return (
     <svg width={30} height={14} viewBox="0 0 30 14">
@@ -214,12 +215,19 @@ export function ArcHeadIcon({ kind }: { kind: ArcKind }) {
 export function Menu({ label, children, title, wide }: { label: React.ReactNode; title?: string; wide?: boolean; children: (close: () => void) => React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!open) return;
     const h = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
     };
-    const k = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Keyboard focus was inside the menu: give it back to the menu's button rather than losing it.
+      const hadFocus = ref.current?.contains(document.activeElement);
+      setOpen(false);
+      if (hadFocus) button.current?.focus();
+    };
     window.addEventListener("pointerdown", h);
     window.addEventListener("keydown", k);
     return () => {
@@ -229,7 +237,7 @@ export function Menu({ label, children, title, wide }: { label: React.ReactNode;
   }, [open]);
   return (
     <div className="menu" ref={ref}>
-      <button className={open ? "active" : ""} onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open} title={title}>
+      <button ref={button} className={open ? "active" : ""} onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open} title={title}>
         {label} <Icon name="chevron" />
       </button>
       {open && (
@@ -531,6 +539,7 @@ function AnalyseItems({ close }: { close: () => void }) {
           </Item>
           <Item close={close} onClick={() => openAmbientDialog("blocks")}>Building blocks…</Item>
           {netClass === "apn" && <Item close={close} onClick={() => openAmbientDialog("compose")} disabled={!editing}>Compose steps…</Item>}
+          <Item close={close} onClick={() => useStore.setState({ dialog: "framework" })}>Framework pipeline (APN → T-APN → slice)…</Item>
           <hr />
         </div>
       )}
@@ -545,6 +554,7 @@ function AnalyseItems({ close }: { close: () => void }) {
           <Item close={close} onClick={() => useStore.setState({ dialog: "analysis" })}>Net properties and invariants…</Item>
           <Item close={close} onClick={() => useStore.setState({ dialog: "rg" })}>Reachability graph…</Item>
           {!ambient && <Item close={close} onClick={() => useStore.setState({ dialog: "ctl" })}>Model checking (CTL)…</Item>}
+          <Item close={close} onClick={() => useStore.setState({ dialog: "slice" })}>Slice the net…</Item>
           {isColoured(netClass) && <Item close={close} onClick={() => void cmdUnfold()}>Unfold to an uncoloured net</Item>}
           {netClass === "coloured" && (
             <Item close={close} onClick={() => setNetClass("apn")} disabled={!editing} title="Read this coloured net as Konios's Ambient Petri net, with step semantics">
@@ -562,6 +572,7 @@ function AnalyseItems({ close }: { close: () => void }) {
 function HelpItems({ close }: { close: () => void }) {
   return (
     <>
+      <Item close={close} onClick={() => openDocs()} kbd="F1">Docs (search everything)…</Item>
       <Item close={close} onClick={() => useStore.setState({ dialog: "help" })} kbd="?">Quick guide and shortcuts</Item>
       <Item close={close} onClick={() => useStore.setState({ dialog: "about" })}>About</Item>
     </>

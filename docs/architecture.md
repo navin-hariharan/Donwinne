@@ -23,8 +23,8 @@ file format.
 
 ## Monorepo layout
 
-Donwinne is a TypeScript monorepo managed with **pnpm** workspaces (`packages/*` and `apps/*`). You need Node 20 or
-later and pnpm 10.
+Donwinne is a TypeScript monorepo managed with **pnpm** workspaces (`packages/*` and `apps/*`). You need Node 20.19 or
+later (Vite 7 requires it) and pnpm 10.
 
 ```
 .
@@ -86,7 +86,7 @@ Two points worth knowing:
 
 | Module | Contents |
 | --- | --- |
-| [model.ts](../packages/core/src/model.ts) | The `Net` type and its parts, the 23 net classes, class groups (`COLOURED_CLASSES`, `AMBIENT_CLASSES`, `QUANTITATIVE_CLASSES`, `FAULT_TREE_CLASSES`), `arcKindsFor`, `timeBase`, `NET_CLASS_LABELS` |
+| [model.ts](../packages/core/src/model.ts) | The `Net` type and its parts, the 23 net classes, class groups (`COLOURED_CLASSES`, `AMBIENT_CLASSES`, `FAULT_TREE_CLASSES`), `arcKindsFor`, `timeBase`, `NET_CLASS_LABELS` |
 | [expr.ts](../packages/core/src/expr.ts) | The expression language: parser and evaluator |
 | [multiset.ts](../packages/core/src/multiset.ts) | An immutable `Multiset` of colour values |
 | [semantics.ts](../packages/core/src/semantics.ts) | Declarations, colour domains, `compile()` to a `CompiledNet`, binding enumeration, enabledness and firing |
@@ -113,10 +113,12 @@ Two points worth knowing:
 | [ptnet.ts](../packages/analysis/src/ptnet.ts) | `toPTNet`: the unfolded P/T view every analysis works on, with names mapping back to the coloured elements |
 | [analyse.ts](../packages/analysis/src/analyse.ts) | `analyseNet`: one report with every property and a readable summary |
 | [structure.ts](../packages/analysis/src/structure.ts), [invariants.ts](../packages/analysis/src/invariants.ts), [siphons.ts](../packages/analysis/src/siphons.ts) | Structural properties, P/T-invariants (Farkas), siphons and traps |
-| [statespace.ts](../packages/analysis/src/statespace.ts), [behaviour.ts](../packages/analysis/src/behaviour.ts) | State space exploration, Karp-Miller coverability, behavioural properties |
+| [statespace.ts](../packages/analysis/src/statespace.ts), [behaviour.ts](../packages/analysis/src/behaviour.ts) | State space exploration (markings packed in chunked Int32 arrays with an open-addressing hash, incremental hashing and per-place candidate lists), Karp-Miller coverability, behavioural properties |
 | [ts.ts](../packages/analysis/src/ts.ts), [stepgraph.ts](../packages/analysis/src/stepgraph.ts), [projection.ts](../packages/analysis/src/projection.ts), [steps.ts](../packages/analysis/src/steps.ts) | Transition systems for model checking: interleaving, step graphs, the colour-blind projection |
 | [ctl.ts](../packages/analysis/src/ctl.ts), [check.ts](../packages/analysis/src/check.ts), [templates.ts](../packages/analysis/src/templates.ts) | CTL parser, checker and property templates (see [CTL model checking](ctl.md)) |
 | [paths.ts](../packages/analysis/src/paths.ts), [fault.ts](../packages/analysis/src/fault.ts) | Path queries and fault tolerance |
+| [slicing.ts](../packages/analysis/src/slicing.ts) | The slicing algorithms of the survey, `sliceToNet`, evolution impact, Lee and Chang slices (see [Slicing](slicing.md)) |
+| [stubborn.ts](../packages/analysis/src/stubborn.ts) | Stubborn-set reduced state spaces (deadlocks; visible places with the ignoring proviso) |
 
 ### apn
 
@@ -256,7 +258,7 @@ Rules of the store:
 | [Canvas.tsx](../packages/editor/src/Canvas.tsx), [NetDrawing.tsx](../packages/editor/src/NetDrawing.tsx), [Minimap.tsx](../packages/editor/src/Minimap.tsx), [InlineEditor.tsx](../packages/editor/src/InlineEditor.tsx), [ContextMenu.tsx](../packages/editor/src/ContextMenu.tsx) | Drawing and editing the net |
 | [PropertiesPanel.tsx](../packages/editor/src/PropertiesPanel.tsx), [PropsSheet.tsx](../packages/editor/src/PropsSheet.tsx), [Elements.tsx](../packages/editor/src/Elements.tsx) | Properties of the selection, the element table |
 | [BottomPanel.tsx](../packages/editor/src/BottomPanel.tsx), [Plot.tsx](../packages/editor/src/Plot.tsx), [AmbientSim.tsx](../packages/editor/src/AmbientSim.tsx) | Problems, simulation history, plots, fault tree results, the step token game |
-| [Dialogs.tsx](../packages/editor/src/Dialogs.tsx), [Analysis.tsx](../packages/editor/src/Analysis.tsx), [AmbientDialogs.tsx](../packages/editor/src/AmbientDialogs.tsx), [CtlDialog.tsx](../packages/editor/src/CtlDialog.tsx), [RGGraph.tsx](../packages/editor/src/RGGraph.tsx) | Dialogs: new model, help, search, reachability graph (and its drawing), net properties, the ambient dialogs, model checking |
+| [Dialogs.tsx](../packages/editor/src/Dialogs.tsx), [Analysis.tsx](../packages/editor/src/Analysis.tsx), [AmbientDialogs.tsx](../packages/editor/src/AmbientDialogs.tsx), [CtlDialog.tsx](../packages/editor/src/CtlDialog.tsx), [SlicingDialog.tsx](../packages/editor/src/SlicingDialog.tsx), [RGGraph.tsx](../packages/editor/src/RGGraph.tsx) | Dialogs: new model, help, search, reachability graph (and its drawing), net properties, the ambient dialogs, model checking, slicing and the framework pipeline ([framework.ts](../packages/editor/src/framework.ts)) |
 | [simulation.ts](../packages/editor/src/simulation.ts), [ambient.ts](../packages/editor/src/ambient.ts), [ctl.ts](../packages/editor/src/ctl.ts), [trail.ts](../packages/editor/src/trail.ts) | Token game logic, step token game logic, state spaces for model checking, the red token trail |
 | [fileOps.ts](../packages/editor/src/fileOps.ts), [examples.ts](../packages/editor/src/examples.ts), [rgExport.ts](../packages/editor/src/rgExport.ts), [watermark.ts](../packages/editor/src/watermark.ts), [version.ts](../packages/editor/src/version.ts) | Open, save, import, export, print; the example models; reachability graph export; the "Exported from Donwinne" mark; the app version |
 | [layout.ts](../packages/editor/src/layout.ts), [geometry.ts](../packages/editor/src/geometry.ts), [responsive.ts](../packages/editor/src/responsive.ts), [music.ts](../packages/editor/src/music.ts) | Auto layout (elkjs), geometry, phone and tablet layouts, sound for music nets |
@@ -320,6 +322,10 @@ The [web manifest](../apps/web/public/manifest.webmanifest) makes the app instal
 - saves without a dialog go only to paths the user opened or chose in a dialog;
 - closing with unsaved changes asks first ("Discard changes" or "Cancel");
 - links open in the system browser, and only for http, https and mailto;
+- every IPC call is checked: the main process answers only the app's own page (its main frame at the app's
+  address), never another frame or a page that navigated away;
+- device permissions are denied: no camera, microphone, location, notifications or USB. Only writing to the
+  clipboard is allowed, which Help > Docs uses to copy a link to a section;
 - the native menus: File (including "New APN from Building Blocks…", "Import (Snoopy, PNML, ANDL)…" and an "Export As"
   submenu), Edit, View, Analyse (with "Model Checking (CTL)…", "Unfold to an Uncoloured Net" and an "Ambient (Konios)"
   submenu) and Help. Each item sends a `MenuCommand` to the page.
@@ -378,8 +384,9 @@ PNS_DEV_URL=http://localhost:5173 pnpm --filter @pns/desktop start
 The [Dockerfile](../Dockerfile) builds and serves the web app:
 
 1. **Build stage** (`node:22-alpine`): installs pnpm 10.28.0, skips the Electron download
-   (`ELECTRON_SKIP_BINARY_DOWNLOAD=1`), installs only the web app's and the root's dependencies, then runs
-   `pnpm test && pnpm --filter @pns/web build`. **The image is not built if a test fails.**
+   (`ELECTRON_SKIP_BINARY_DOWNLOAD=1`), installs only the web app's and the root's dependencies, copies the
+   packages, the web app and `docs/` (the pages and pictures of **Help > Docs**; `.dockerignore` leaves out
+   `docs/examples` and `docs/thesis`), then runs `pnpm test && pnpm --filter @pns/web build`. **The image is not built if a test fails.**
 2. **Serve stage** (`nginx:1.30-alpine`): copies `apps/web/dist` and [docker/nginx.conf](../docker/nginx.conf)
    (gzip; files under `/assets/` cached as immutable for a year; every other path falls back to `index.html`
    without caching). A `HEALTHCHECK` watches the server.
@@ -419,11 +426,11 @@ reproduction in `thesis.test.ts`.
 | --- | --- | --- |
 | core | `semantics` (15), `snoopy-features` (19), `ambient` (5) | Expressions, P/T, extended and coloured firing, logical places, modifier arcs, fixed places, colour sets, user and math functions, observers, the APN class checks |
 | sim | `sim` (33), `snoopy-features` (20) | Stochastic, continuous and hybrid simulation, timed nets, unfolding, Snoopy feature parity |
-| analysis | `analysis` (50), `verification` (23), `ctl` (14), `crosscheck` (3), `thesis` (19) | Incidence matrix, invariants, structural properties, siphons and traps, behaviour, Snoopy samples, cross-checks on random nets; CTL parser and checker, truncated state spaces; templates, paths, fault tolerance, the colour-blind projection; every result of chapter 7 of the thesis |
+| analysis | `analysis` (50), `verification` (23), `ctl` (14), `crosscheck` (3), `thesis` (19), `slicing` (21) | Incidence matrix, invariants, structural properties, siphons and traps, behaviour, Snoopy samples, cross-checks on random nets; CTL parser and checker, truncated state spaces; templates, paths, fault tolerance, the colour-blind projection; every result of chapter 7 of the thesis; slicing (survey Fig. 7, chapter Figs 7-10, random nets against the full state space) and stubborn sets |
 | apn | `semantics` (28), `blocks` (18), `compose-figures` (24), `compose-properties` (16), `construction` (20), `cases` (26) | APN and T-APN classes and step semantics, the CRG (Def. 5); building blocks (Defs 6, 7, 11, Fig. 4.1); Figs 4.7 to 4.12; Sec. 4.3 and 4.4 properties; the construction φ on Figs 6.1 and 6.3 and equivalence; the case studies, their T-APNs and the editor examples |
 | ft | `analysis` (17), `translate` (11) | Cut sets, probabilities, importance, Monte Carlo of dynamic gates, translation to Petri nets, DNF import, layout |
 | io | `native` (38), `snoopy` (36), `pnml` (31), `exporters` (35), `candl` (14), `snoopy-features` (13), `ambient` (4) | Every file format, round trips, Snoopy samples, APN and T-APN files |
-| editor | `ambient` (6), `ux` (8), `responsive` (5), `editing` (3) | The step token game and building blocks in the editor, editing, arc checks, screen classes |
+| editor | `ambient` (6), `ux` (8), `responsive` (5), `editing` (3), `framework` (3) | The step token game and building blocks in the editor, editing, arc checks, screen classes, the framework pipeline |
 
 The thesis tests are the reference for the reproduction figures given in
 [Reproducing the thesis's results](ambient-petri-nets.md#reproducing-the-thesiss-results).
@@ -433,7 +440,7 @@ The thesis tests are the reference for the reproduction figures given in
 ### Adding a net class
 
 1. **Declare it** in [model.ts](../packages/core/src/model.ts): add the name to the `NetClass` union, a label to
-   `NET_CLASS_LABELS`, and the class to the groups it belongs to (`COLOURED_CLASSES`, `QUANTITATIVE_CLASSES`,
+   `NET_CLASS_LABELS`, and the class to the groups it belongs to (`COLOURED_CLASSES`,
    `AMBIENT_CLASSES`, `FAULT_TREE_CLASSES`). Update `arcKindsFor` and, for timed or rated classes, `timeBase`.
 2. **Run `pnpm typecheck`.** Several tables are typed `Record<NetClass, …>` (for example `NET_CLASS_LABELS` and
    `SNOOPY_CLASSES` in [snoopy.ts](../packages/io/src/snoopy.ts)), so the compiler lists the places that need an

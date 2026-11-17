@@ -170,7 +170,7 @@ export interface PlaceBound {
   source: "statespace" | "coverability" | "invariants" | "partial";
 }
 
-export interface DeadlockInfo {
+interface DeadlockInfo {
   /** Shortest firing sequence from the initial marking to the first deadlock. */
   path: NodeRef[];
   /** Marked places of the dead marking by display name. */

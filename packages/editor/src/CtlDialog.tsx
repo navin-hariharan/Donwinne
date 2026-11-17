@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
 import { Net } from "@pns/core";
 import {
@@ -455,7 +455,7 @@ function FormulasTab({ net, system, deadlocks, busy }: { net: Net; system: Syste
         {list.length === 0 ? (
           <p className="muted small">Add formulas to check several at once. Templates that give several formulas add the rest here.</p>
         ) : (
-          <div className="rg-table-wrap">
+          <div className="rg-table-wrap" tabIndex={0}>
             <table className="rg-table ctl-table" data-testid="ctl-list">
               <thead>
                 <tr>

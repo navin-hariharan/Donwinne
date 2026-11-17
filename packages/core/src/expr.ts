@@ -71,9 +71,39 @@ function tokenize(src: string): Tok[] {
 
 const KEYWORD_OPS: Record<string, string> = { or: "or", and: "and", not: "not" };
 
+/** Brackets, calls and prefix operators nested deeper than this are refused (the parser recurses). */
+const MAX_NESTING = 200;
+/** Expression trees deeper than this are refused: evaluation and compilation walk them recursively. */
+const MAX_EXPR_DEPTH = 1000;
+
+/** Depth of an expression tree, computed without recursion. */
+function exprDepth(root: Expr): number {
+  let max = 0;
+  const stack: [Expr, number][] = [[root, 1]];
+  while (stack.length) {
+    const [e, d] = stack.pop()!;
+    if (d > max) max = d;
+    if (e.k === "bin") stack.push([e.l, d + 1], [e.r, d + 1]);
+    else if (e.k === "un") stack.push([e.e, d + 1]);
+    else if (e.k === "call") for (const a of e.args) stack.push([a, d + 1]);
+    else if (e.k === "tuple") for (const a of e.items) stack.push([a, d + 1]);
+  }
+  return max;
+}
+
 export function parse(src: string): Expr {
   const toks = tokenize(src);
   let i = 0;
+  let nesting = 0;
+  /** Runs one nested level (a bracket, a call or a prefix operator), refusing absurd depths. */
+  const nested = <T>(f: () => T): T => {
+    if (++nesting > MAX_NESTING) throw new ExprError(`The expression is nested too deeply (more than ${MAX_NESTING} levels)`, peek().pos);
+    try {
+      return f();
+    } finally {
+      nesting--;
+    }
+  };
   const peek = () => toks[i];
   const isOp = (...vs: string[]) => {
     const t = toks[i];
@@ -121,7 +151,7 @@ export function parse(src: string): Expr {
   const not = (): Expr => {
     if (isOp("not", "!")) {
       i++;
-      return { k: "un", op: "not", e: not() };
+      return { k: "un", op: "not", e: nested(not) };
     }
     return cmp();
   };
@@ -156,12 +186,12 @@ export function parse(src: string): Expr {
   const unary = (): Expr => {
     if (isOp("-")) {
       i++;
-      return { k: "un", op: "-", e: unary() };
+      return { k: "un", op: "-", e: nested(unary) };
     }
     const base = primary();
     if (isOp("^")) {
       i++;
-      return { k: "bin", op: "^", l: base, r: unary() };
+      return { k: "bin", op: "^", l: base, r: nested(unary) };
     }
     return base;
   };
@@ -179,10 +209,10 @@ export function parse(src: string): Expr {
         i++;
         const args: Expr[] = [];
         if (!isOp(")")) {
-          args.push(multiset());
+          args.push(nested(multiset));
           while (isOp(",")) {
             i++;
-            args.push(multiset());
+            args.push(nested(multiset));
           }
         }
         expect(")");
@@ -192,10 +222,10 @@ export function parse(src: string): Expr {
     }
     if (isOp("(")) {
       i++;
-      const items = [multiset()];
+      const items = [nested(multiset)];
       while (isOp(",")) {
         i++;
-        items.push(multiset());
+        items.push(nested(multiset));
       }
       expect(")");
       return items.length === 1 ? items[0] : { k: "tuple", items };
@@ -206,6 +236,7 @@ export function parse(src: string): Expr {
 
   const e = multiset();
   if (peek().t !== "end") throw new ExprError(`Unexpected "${peek().v}"`, peek().pos);
+  if (exprDepth(e) > MAX_EXPR_DEPTH) throw new ExprError(`The expression is too long to evaluate safely (more than ${MAX_EXPR_DEPTH} operations in a chain); split it into functions`, 0);
   return e;
 }
 

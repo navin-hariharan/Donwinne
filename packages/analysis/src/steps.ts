@@ -3,6 +3,7 @@
 // Konios 2015, Figs 7.41-7.42).
 
 import { checkAbort, type PTNet } from "./ptnet";
+import { MarkingStore } from "./statespace";
 import { transitionSystemFromGraph, type TransitionSystem, type TransitionSystemOptions } from "./ts";
 
 export interface StepSystemOptions extends TransitionSystemOptions {
@@ -44,10 +45,11 @@ export function stepSystem(pt: PTNet, opts: StepSystemOptions = {}): TransitionS
   }
   const caps = pt.capacity.flatMap((c, p) => (c === undefined ? [] : [[p, c] as const]));
 
-  const markings: Int32Array[] = [Int32Array.from(pt.m0)];
-  const index = new Map<string, number>([[markings[0].join(","), 0]]);
+  const store = new MarkingStore(pt.places.length, Math.min(maxStates, 1 << 16));
+  store.add(pt.m0);
+  const markings = store.markings;
   const edges: { from: number; to: number; transitions: number[] }[] = [];
-  const open: number[] = [];
+  const open = new Set<number>();
   let cut = false;
   const notes: string[] = [];
 
@@ -88,17 +90,14 @@ export function stepSystem(pt: PTNet, opts: StepSystemOptions = {}): TransitionS
         return;
       }
       found++;
-      const key = N.join(",");
-      let to = index.get(key);
-      if (to === undefined) {
+      let to = store.find(N);
+      if (to < 0) {
         if (markings.length >= maxStates) {
           cut = true;
-          if (!open.includes(s)) open.push(s);
+          open.add(s);
           return;
         }
-        to = markings.length;
-        markings.push(N);
-        index.set(key, to);
+        to = store.add(N);
       }
       const ts: number[] = [];
       for (let t = 0; t < nT; t++) for (let k = 0; k < count[t]; k++) ts.push(t);
@@ -129,7 +128,7 @@ export function stepSystem(pt: PTNet, opts: StepSystemOptions = {}): TransitionS
     rec(0, false);
     if (truncated) {
       cut = true;
-      if (!open.includes(s)) open.push(s);
+      open.add(s);
       notes.push(`State ${s} has more than ${maxSteps} enabled steps; the rest were not explored.`);
     }
   }
@@ -141,7 +140,7 @@ export function stepSystem(pt: PTNet, opts: StepSystemOptions = {}): TransitionS
     edges,
     semantics: "step",
     complete: !cut,
-    ...(cut ? { open: open.length ? open : undefined } : {}),
+    ...(cut ? { open: open.size ? [...open] : undefined } : {}),
     notes,
   });
 }

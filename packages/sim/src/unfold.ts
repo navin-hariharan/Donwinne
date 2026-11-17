@@ -215,6 +215,10 @@ export function unfold(net: Net, opts: UnfoldOptions = {}): UnfoldResult {
         if (!p) throw new SimulationError(`${t.name} ${showBindingText(b)}: ${showValue(c)} is not in colour set ${a.place.colourSet} of ${a.place.name}`, t.id);
         return p;
       };
+      // A colour outside a place's colour set can never be on the place: a binding that needs one
+      // (normal, read or equal arc) is never enabled, and an inhibitor arc for one never blocks.
+      const outside = (a: CArc, c: Value) => !inst.get(a.place.id)!.has(valueKey(c));
+      if (ct.inputs.some((a) => (a.arc.kind === "normal" || a.arc.kind === "read" || a.arc.kind === "equal") && [...ms(a).entries()].some(([c, n]) => n > 0 && outside(a, c)))) continue;
       const id = vars.length ? `${t.id}__${k}` : t.id;
       const name = vars.length ? `${t.name}_${vars.map((v) => colourIdent(b[v.name])).join("_")}` : t.name;
       k++;
@@ -246,6 +250,7 @@ export function unfold(net: Net, opts: UnfoldOptions = {}): UnfoldResult {
           continue;
         }
         for (const [c, n] of m.entries()) {
+          if (kind === "inhibitor" && outside(a, c)) continue;
           const p = instOf(a, c);
           addArc(p.id, id, kind, n);
           if (kind === "normal" || kind === "read") {

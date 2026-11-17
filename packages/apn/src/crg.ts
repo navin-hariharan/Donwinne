@@ -17,7 +17,7 @@ export interface StepTransitionSystem<S = Marking> {
   initial: number;
 }
 
-export interface CrgOptions {
+interface CrgOptions {
   /** Stop after this many states (default 10 000). */
   maxStates?: number;
   /** Stop after this many edges (default 100 000). */

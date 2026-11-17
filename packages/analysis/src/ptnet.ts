@@ -56,6 +56,13 @@ export interface PTNet {
   errors: string[];
   /** Evaluation environment for marking-dependent weights at marking M. */
   envAt?: (M: ArrayLike<number>) => EvalEnv;
+  /**
+   * The uncoloured net that was compiled (the unfolding for coloured nets, the discrete part of
+   * hybrid nets). Element ids in {@link slotMembers} and arc ids in {@link PTArc.arcId} refer to it.
+   */
+  work?: Net;
+  /** Ids (in {@link work}) of the places sharing each marking slot: one place, or every member of a logical place. */
+  slotMembers?: string[][];
 }
 
 /** Display name of a colour: (1,a) -> 1,a. */
@@ -219,7 +226,8 @@ export function toPTNet(net: Net): PTNet {
     },
   });
 
-  return { places, transitions, arcs, m0, capacity, modulus: cn.modulus, unfolded: !!mapping, warnings, errors, envAt };
+  const slotMembers = cn.slotPlaces.map((members) => members.map((m) => m.id));
+  return { places, transitions, arcs, m0, capacity, modulus: cn.modulus, unfolded: !!mapping, warnings, errors, envAt, work, slotMembers };
 }
 
 /** Pre and Post matrices (places × transitions) of the structural net: normal arcs, read arcs as self-loops. */

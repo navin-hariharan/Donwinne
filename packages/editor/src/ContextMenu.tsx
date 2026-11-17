@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { ARC_KINDS, arcKindsFor, FTNodeType, isColoured, isFaultTree, isPlace } from "@pns/core";
 import {
   addFTNode,

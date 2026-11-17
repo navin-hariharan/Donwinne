@@ -1,6 +1,8 @@
 import { AnalysisDialog } from "./Analysis";
 import { ApnPropsDialog, BlocksDialog, ComposeDialog, CrgDialog, EquivalenceDialog, TapnDialog } from "./AmbientDialogs";
 import { CtlDialog } from "./CtlDialog";
+import { FrameworkDialog, SlicingDialog } from "./SlicingDialog";
+import { DocsDialog } from "./docs/DocsDialog";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Binding, Marking, NET_CLASS_LABELS, NetClass, Point, enabledBindings, fire, initialMarking, markingKey, showBinding, showTokens } from "@pns/core";
 import { cmdOpen, cmdOpenExample, cmdOpenRecent, exportData, svgToPng } from "./fileOps";
@@ -69,6 +71,12 @@ export function Dialogs() {
       return <ComposeDialog Modal={Modal} close={close} />;
     case "ctl":
       return <CtlDialog Modal={Modal} close={close} />;
+    case "slice":
+      return <SlicingDialog Modal={Modal} close={close} />;
+    case "framework":
+      return <FrameworkDialog Modal={Modal} close={close} />;
+    case "docs":
+      return <DocsDialog close={close} />;
   }
   return null;
 }
@@ -712,7 +720,7 @@ function ReachabilityDialog() {
               </button>
             </div>
           )}
-          {shownView === "table" && <div className="rg-table-wrap">
+          {shownView === "table" && <div className="rg-table-wrap" tabIndex={0}>
             <table className="rg-table">
               <thead>
                 <tr>

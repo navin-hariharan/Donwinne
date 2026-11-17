@@ -236,7 +236,7 @@ export const EXAMPLES: { title: string; net: Net }[] = [
       name: "Scale",
       netClass: "music",
       comment: "Run the token game with sound on to hear the scale go up and down.",
-      places: ["C", "D", "E", "F", "G"].map((n, i) => ({ id: `s${i}`, name: `p${i}`, x: 80 + i * 140, y: 140, marking: i === 0 ? "1" : "" })),
+      places: [0, 1, 2, 3, 4].map((i) => ({ id: `s${i}`, name: `p${i}`, x: 80 + i * 140, y: 140, marking: i === 0 ? "1" : "" })),
       transitions: [
         ...["D4", "E4", "F4", "G4"].map((note, i) => ({ id: `up${i}`, name: `up${i + 1}`, x: 150 + i * 140, y: 80, sound: { note, duration: 0.35, instrument: "piano" as const } })),
         ...["C4", "D4", "E4", "F4"].map((note, i) => ({ id: `dn${i}`, name: `down${i + 1}`, x: 150 + i * 140, y: 200, sound: { note, duration: 0.35, instrument: "triangle" as const } })),

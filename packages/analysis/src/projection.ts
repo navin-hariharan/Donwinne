@@ -46,8 +46,7 @@ export function colourBlindProjection(net: Net, opts: ProjectionOptions = {}): P
   const placeBase = pt.places.map((p) => p.baseName ?? p.name);
   const original = new Map(net.places.map((p) => [p.name, p]));
   const colours = new Map<string, number>();
-  pt.places.forEach((p, i) => {
-    const b = placeBase[i];
+  placeBase.forEach((b) => {
     colours.set(b, (colours.get(b) ?? 0) + 1);
     if (!placeOf.has(b)) {
       placeOf.set(b, out.places.length);

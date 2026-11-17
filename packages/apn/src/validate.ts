@@ -3,7 +3,7 @@
 import { Net, Problem, compile, isAmbient } from "@pns/core";
 import { classifyStepNet } from "./construction";
 
-export interface ValidateOptions {
+interface ValidateOptions {
   /**
    * Also check that an APN is a composite step net (Def. 13), the class the construction φ and
    * Theorem 1 are stated for. Its findings are warnings. Default false.

@@ -50,7 +50,7 @@ export interface Problem {
   elementId?: string;
 }
 
-export interface CPlace {
+interface CPlace {
   id: string;
   /** Holds a real number (continuous and hybrid nets). */
   continuous?: boolean;
@@ -68,7 +68,7 @@ export interface CArc {
   expr: Expr | null;
 }
 
-export interface CTransition {
+interface CTransition {
   id: string;
   name: string;
   index: number;
@@ -187,7 +187,7 @@ export function colourSetDomain(cs: ColourSetDecl, sets: Map<string, Value[]>, e
 }
 
 /** Functions every expression may call besides user functions: math, colour and Snoopy rate functions. */
-export const KNOWN_FUNCTIONS: ReadonlySet<string> = new Set<string>([
+const KNOWN_FUNCTIONS: ReadonlySet<string> = new Set<string>([
   ...BUILTIN_FUNCTIONS,
   "all",
   "succ",
@@ -213,7 +213,7 @@ const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
  * wrong numbers of arguments and (mutual) recursion. Problems are appended to `problems`; functions
  * with errors are left out of the result.
  */
-export function compileFunctions(decls: FunctionDecl[] | undefined, problems: Problem[]): Map<string, UserFunction> {
+function compileFunctions(decls: FunctionDecl[] | undefined, problems: Problem[]): Map<string, UserFunction> {
   const out = new Map<string, UserFunction>();
   const bad = new Set<string>();
   for (const f of decls ?? []) {
@@ -290,7 +290,7 @@ export function compileFunctions(decls: FunctionDecl[] | undefined, problems: Pr
  * Calls of unknown functions and calls of user functions with the wrong number of arguments, as
  * messages. Names in `declared` (user functions that failed to compile) do not count as unknown.
  */
-export function callProblems(e: Expr, functions: ReadonlyMap<string, UserFunction>, declared: ReadonlySet<string> = new Set()): string[] {
+function callProblems(e: Expr, functions: ReadonlyMap<string, UserFunction>, declared: ReadonlySet<string> = new Set()): string[] {
   const out: string[] = [];
   for (const c of calls(e)) {
     const f = functions.get(c.name);
@@ -820,7 +820,7 @@ function apply(M: Marking, eff: Effect): Marking {
 }
 
 /** Candidate values for each variable, pruned by the tokens available on simple input arcs. */
-function candidates(cn: CompiledNet, t: CTransition, M: Marking): { name: string; values: Value[] }[] {
+function candidates(t: CTransition, M: Marking): { name: string; values: Value[] }[] {
   return t.variables.map(({ name, domain }) => {
     let values = domain;
     for (const a of t.inputs) {
@@ -856,7 +856,7 @@ function* bindings(vars: { name: string; values: Value[] }[]): Generator<Binding
 
 const MAX_BINDINGS = 10_000;
 
-export interface EnabledResult {
+interface EnabledResult {
   bindings: Binding[];
   error?: string;
 }
@@ -867,7 +867,7 @@ export function enabledBindings(cn: CompiledNet, tIndex: number, M: Marking): En
   const out: Binding[] = [];
   try {
     let tried = 0;
-    for (const b of bindings(candidates(cn, t, M))) {
+    for (const b of bindings(candidates(t, M))) {
       if (++tried > MAX_BINDINGS) return { bindings: out, error: "Too many bindings to check; showing the first ones" };
       if (effectOf(cn, t, b, M)) out.push(b);
     }
@@ -930,7 +930,7 @@ export function disabledReasons(cn: CompiledNet, tIndex: number, M: Marking): st
       return out;
     };
     if (!t.variables.length) return reasonsFor({});
-    const cands = candidates(cn, t, M);
+    const cands = candidates(t, M);
     const empty = cands.filter((v) => !v.values.length).map((v) => v.name);
     if (empty.length) return [`no tokens on its input places give a value for ${empty.join(", ")}`];
     const all = [...bindings(cands)];
@@ -939,10 +939,6 @@ export function disabledReasons(cn: CompiledNet, tIndex: number, M: Marking): st
   } catch (e) {
     return [(e as Error).message];
   }
-}
-
-export function isEnabled(cn: CompiledNet, tIndex: number, M: Marking): boolean {
-  return enabledBindings(cn, tIndex, M).bindings.length > 0;
 }
 
 /** Fire one transition under a binding. Throws if it is not enabled. */

@@ -90,11 +90,13 @@ export function analyseBehaviour(pt: PTNet, opts: BehaviourOptions = {}, ctx: Be
 
   const ss: StateSpace = explore(pt, maxStates, opts.signal);
   for (const e of ss.errors) pt.warnings.push(`While exploring the state space: ${e}`);
-  const complete = !ss.truncated;
+  // A state where a transition could not be evaluated has unknown successors: the graph is not complete.
+  const complete = !ss.truncated && !ss.unresolved.length;
   const N = ss.markings.length;
   const highlight: BehaviourNotes["highlight"] = {};
-  const tooBig = `the state space has more than ${maxStates} states`;
-  if (!complete) pt.warnings.push(`State space exploration stopped at ${maxStates} states; behavioural results rely on coverability and structural theorems where possible.`);
+  const tooBig = ss.truncated ? `the state space has more than ${maxStates} states` : `a transition could not be evaluated in ${ss.unresolved.length} reachable marking${ss.unresolved.length === 1 ? "" : "s"}`;
+  if (ss.truncated) pt.warnings.push(`State space exploration stopped at ${maxStates} states; behavioural results rely on coverability and structural theorems where possible.`);
+  else if (!complete) pt.warnings.push(`A transition could not be evaluated in ${ss.unresolved.length} reachable marking${ss.unresolved.length === 1 ? "" : "s"}, so their successors are unknown; behavioural results rely on structural theorems where possible.`);
 
   // Observed maxima.
   const seen = new Array<number>(P.length).fill(0);
@@ -393,7 +395,8 @@ export function dynamicConflicts(pt: PTNet, ss: StateSpace, signal?: AbortSignal
           try {
             enabled = firer.fire(u, M2) !== null;
           } catch {
-            continue;
+            // u cannot be evaluated at M2: no conflict can be claimed or ruled out from here.
+            return { cut: true };
           }
           if (!enabled) return { found: { state: s, t, u }, cut: false };
         }

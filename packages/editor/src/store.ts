@@ -38,7 +38,7 @@ import { Step, ambientErrors } from "@pns/apn";
 import { TimedState, timedDelay, timedEnabled, timedFire, timedInit } from "@pns/sim";
 
 /** Dialogs for Konios's Ambient Petri nets. */
-export type AmbientDialog = "crg" | "tapn" | "equivalence" | "apnProps" | "blocks" | "compose";
+type AmbientDialog = "crg" | "tapn" | "equivalence" | "apnProps" | "blocks" | "compose";
 
 export type Tool = "select" | "place" | "transition" | "arc" | "note" | `ft:${FTNodeType}`;
 export type Mode = "edit" | "simulate";
@@ -60,7 +60,7 @@ export interface View {
   zoom: number;
 }
 
-export interface Clipboard {
+interface Clipboard {
   places: Place[];
   transitions: Transition[];
   arcs: Arc[];
@@ -69,7 +69,7 @@ export interface Clipboard {
   ftEdges: FTEdge[];
 }
 
-export type InlineField = "name" | "marking" | "inscription" | "note" | "rate";
+type InlineField = "name" | "marking" | "inscription" | "note" | "rate";
 
 /** A file opened or saved recently; its text is kept under `key` in local storage so it can be reopened. */
 export interface RecentFile {
@@ -115,7 +115,7 @@ export interface State {
   bindingPicker: { transitionId: string; bindings: Binding[]; x: number; y: number } | null;
   contextMenu: { x: number; y: number; world: Point; targetId: string | null } | null;
   inlineEdit: { id: string; field: InlineField } | null;
-  dialog: null | "new" | "help" | "search" | "rg" | "about" | "analysis" | AmbientDialog | "ctl";
+  dialog: null | "new" | "help" | "search" | "rg" | "about" | "analysis" | AmbientDialog | "ctl" | "slice" | "framework" | "docs";
   theme: "light" | "dark" | "system";
   panel: "problems" | "elements" | "simulation" | "plot" | "faultTree";
   bottomOpen: boolean;
@@ -471,7 +471,7 @@ function descendants(net: Net, ids: Set<string>): Set<string> {
 /**
  * Move the selected nodes into a new subnet behind a coarse transition or place.
  * Arcs keep their real endpoints, so firing is unchanged; on each page an arc to a hidden
- * node is drawn to the coarse node that contains it (see `visibleEnd`).
+ * node is drawn to the coarse node that contains it (see `pageView` in geometry.ts).
  */
 export function groupIntoSubnet(kind: "transition" | "place") {
   const s = get();
@@ -523,23 +523,6 @@ export function ungroupSubnet(coarseId: string) {
     arcs: n.arcs.filter((a) => a.source !== coarseId && a.target !== coarseId),
     notes: n.notes?.map(re),
   }));
-}
-
-/**
- * The node that stands for `id` on `page`: the node itself, the coarse ancestor on that page,
- * or null when the node is not inside this page at all (then it is "outside").
- */
-export function visibleEnd(net: Net, id: string, page: string | null): string | null {
-  let cur: string | undefined = id;
-  const seen = new Set<string>();
-  while (cur && !seen.has(cur)) {
-    seen.add(cur);
-    const n = net.places.find((p) => p.id === cur) ?? net.transitions.find((t) => t.id === cur) ?? net.faultTree?.nodes.find((f) => f.id === cur);
-    if (!n) return null;
-    if ((n.parent ?? null) === page) return n.id;
-    cur = n.parent;
-  }
-  return null;
 }
 
 // ---------- adding things ----------
@@ -737,7 +720,7 @@ export function updateArc(id: string, patch: Partial<Arc>, coalesce?: string) {
 }
 
 /** A change for several elements: the same fields for all, or worked out for each one. */
-export type Patch<T> = Partial<T> | ((x: T) => Partial<T>);
+type Patch<T> = Partial<T> | ((x: T) => Partial<T>);
 const patched = <T,>(x: T, patch: Patch<T>): T => ({ ...x, ...(typeof patch === "function" ? patch(x) : patch) });
 
 /** Change several places in one undo step (the properties panel's multi-edit). */
@@ -1147,7 +1130,7 @@ export function requestFit() {
 
 // ---------- token game ----------
 
-export function canTokenGame(net: Net): string | null {
+function canTokenGame(net: Net): string | null {
   if (net.netClass === "freestyle") return "Freestyle nets have no firing rules";
   if (isFaultTree(net.netClass)) return "Fault trees are analysed, not simulated with tokens; see the Fault tree tab";
   return null;

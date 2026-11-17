@@ -7,11 +7,11 @@ import { useEffect, useSyncExternalStore } from "react";
  * - tablet: medium widths. Slim tool rail, properties in a drawer, menus behind one button.
  * - desktop: the full layout with the docked properties panel.
  */
-export type ScreenClass = "phone" | "short" | "tablet" | "desktop";
+type ScreenClass = "phone" | "short" | "tablet" | "desktop";
 
-export const PHONE_MAX_W = 599;
-export const SHORT_MAX_H = 499;
-export const TABLET_MAX_W = 1023;
+const PHONE_MAX_W = 599;
+const SHORT_MAX_H = 499;
+const TABLET_MAX_W = 1023;
 
 export function screenClassFor(w: number, h: number): ScreenClass {
   if (h <= SHORT_MAX_H && w > h) return "short";
@@ -46,7 +46,7 @@ export function matches(query: string): boolean {
   return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(query).matches;
 }
 
-export function useMedia(query: string): boolean {
+function useMedia(query: string): boolean {
   return useSyncExternalStore(
     (cb) => {
       if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => undefined;
@@ -63,8 +63,6 @@ export function useMedia(query: string): boolean {
 
 /** True when the main pointer is a finger: hit targets grow and hover hints give way to touch hints. */
 export const useCoarsePointer = () => useMedia("(pointer: coarse)");
-
-export const prefersReducedMotion = () => matches("(prefers-reduced-motion: reduce)");
 
 /**
  * Keeps the app the size of the visible area. On phones the on-screen keyboard shrinks the visual

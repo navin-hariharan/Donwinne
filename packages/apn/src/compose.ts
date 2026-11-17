@@ -18,7 +18,7 @@
 //   accept several roots only when asked to (option `severalRoots`).
 
 import { Arc, ColourSetDecl, Net, Place, Point, compile } from "@pns/core";
-import { ApnStructure, StepRoles, analyseApn, controlPlacesOf, gluingFlag, incidence, resolvePlace, setGluingFlag } from "./model-structure";
+import { ApnStructure, StepRoles, analyseApn, controlPlacesOf, incidence, resolvePlace, setGluingFlag } from "./model-structure";
 import { awayFrom, bendArcs, controlSystemPositions, nodePoints, normalise, placeBackwardStep, placeControlSystem, placeForwardStep } from "./model-layout";
 
 /** Result of a check: yes or no, and why. */
@@ -30,7 +30,7 @@ export interface Check {
 }
 
 /** One composition in a derivation of a composite step net. Ids of the places and step transitions. */
-export type CompositionStep =
+type CompositionStep =
   | { kind: "root"; place: string; control: string }
   | { kind: "forward"; gluing: string; step: string }
   | { kind: "backward"; g1: string; g2: string; step: string };
@@ -41,9 +41,9 @@ export interface ClassCheck extends Check {
   derivation?: CompositionStep[];
 }
 
-export class CompositionError extends Error {}
+class CompositionError extends Error {}
 
-export interface ComposeOptions {
+interface ComposeOptions {
   /** Where the new finishing place goes (forward composition only). Default: chosen automatically. */
   at?: Point;
   /** "auto" (default) places the new step and control system next to the gluing places; "keep" keeps the coordinates of the second net. */
@@ -444,7 +444,7 @@ export function tidy(net: Net): Net {
 // ---------------------------------------------------------------------------------------------
 // Composite step nets (Defs 9 and 13)
 
-export interface CompositeCheckOptions {
+interface CompositeCheckOptions {
   /** Accept several root nets composed in parallel, as the N-graph of Fig. 4.11 does. Default false (Defs 9 and 13 start from one root net). */
   severalRoots?: boolean;
   /** Check the initial marking that the compositions produce (Defs 6-8, 12). Default true. */
@@ -458,7 +458,7 @@ export interface CompositeCheckOptions {
  * u from x get the arc from Def. 8; a backward step t gets it from the second set of Def. 12 for the
  * u that already exist, and the u added later get it from Defs 8 and 12 (first set).
  */
-export function expectedInhibitors(net: Net, s: ApnStructure = analyseApn(net)): { place: string; transition: string }[] {
+function expectedInhibitors(net: Net, s: ApnStructure = analyseApn(net)): { place: string; transition: string }[] {
   const out: { place: string; transition: string }[] = [];
   for (const x of s.stepPlaces) {
     const cps = controlPlacesOf(net, x, s);
@@ -561,7 +561,3 @@ export function gluingPlaces(net: Net): string[] {
   return analyseApn(net).gluing;
 }
 
-/** True when the place carries the gluing flag. */
-export function isGluing(p: Place): boolean {
-  return gluingFlag(p) === true;
-}

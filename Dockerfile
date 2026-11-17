@@ -25,6 +25,8 @@ RUN pnpm install --frozen-lockfile --filter "@pns/web" --filter "donwinne"
 COPY tsconfig.base.json tsconfig.json vitest.config.ts ./
 COPY packages ./packages
 COPY apps/web ./apps/web
+# Help > Docs bundles these pages and pictures.
+COPY docs ./docs
 RUN pnpm test && pnpm --filter @pns/web build
 
 FROM nginx:1.30-alpine

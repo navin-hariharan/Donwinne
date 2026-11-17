@@ -15,7 +15,7 @@ import { StepTransitionSystem } from "./crg";
 import { AmbientNet, ambientErrors, ambientInitialMarking, asAmbient, markingPairs } from "./semantics";
 import { CapacityRule, Step, enabledSteps, fireStep, showStep, stepKey } from "./steps";
 
-export interface EquivalenceOptions {
+interface EquivalenceOptions {
   /** The T-APN to compare with; default: constructTapn(apn). */
   tapn?: Net;
   /** Options for the construction when no T-APN is given. */

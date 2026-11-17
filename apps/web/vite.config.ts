@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 /**
- * Writes the list of built files into dist/sw.js, with a version derived from their contents,
+ * Writes the list of built files (except the docs' GIF animations) into dist/sw.js, with a version derived from their contents,
  * so the service worker can keep them for offline use and replace them after an update.
  */
 function offlineCache(): Plugin {
@@ -26,7 +26,8 @@ function offlineCache(): Plugin {
         for (const name of readdirSync(dir)) {
           const full = path.join(dir, name);
           if (statSync(full).isDirectory()) walk(full);
-          else if (full !== swPath && !name.endsWith(".map")) files.push(path.relative(outDir, full).split(path.sep).join("/"));
+          // Animated pictures of the docs are large: they load when a page shows them, not up front.
+          else if (full !== swPath && !name.endsWith(".map") && !name.endsWith(".gif")) files.push(path.relative(outDir, full).split(path.sep).join("/"));
         }
       };
       walk(outDir);
