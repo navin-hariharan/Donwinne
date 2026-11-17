@@ -27,7 +27,7 @@ import { loadNet, toast, useStore } from "./store";
 import { downloadText } from "./fileOps";
 import { autoLayout } from "./layout";
 import { placeChoices, replayTrace } from "./ctl";
-import { CHAPTER_PROPERTIES, CheckSemantics, FrameworkResult, Fulfilled, SPACE_LABEL, SpaceKind, runFramework } from "./framework";
+import { CHAPTER_PROPERTIES, CheckSemantics, FrameworkResult, Fulfilled, SPACE_LABEL, SpaceKind, maximalStepsUnsupported, runFramework } from "./framework";
 import type { ModalType } from "./AmbientDialogs";
 
 const fmt = (n: number) => n.toLocaleString("en");
@@ -539,6 +539,15 @@ export function FrameworkDialog({ Modal, close }: { Modal: ModalType; close: () 
   const [formulas, setFormulas] = useState(() => remembered?.formulas ?? (net.name.includes("4.10") || net.name.includes("Fig. 7") ? CHAPTER_PROPERTIES.join("\n") : ""));
   const [algorithm, setAlgorithm] = useState<SlicingAlgorithm>(remembered?.algorithm ?? "abstract");
   const [semantics, setSemantics] = useState<CheckSemantics>(remembered?.semantics ?? "single");
+  // Why maximal steps cannot be used for this net (reset arcs, marking-dependent weights…), if so.
+  const maximalBlocked = useMemo(() => {
+    if (semantics !== "maximal") return null;
+    try {
+      return maximalStepsUnsupported(net);
+    } catch {
+      return null;
+    }
+  }, [net, semantics]);
   const [limit, setLimit] = useState(remembered?.limit ?? 200000);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -622,11 +631,16 @@ export function FrameworkDialog({ Modal, close }: { Modal: ModalType; close: () 
             Stop
           </button>
         ) : (
-          <button className="small primary" onClick={go} data-testid="framework-run">
+          <button className="small primary" onClick={go} disabled={!!maximalBlocked} data-testid="framework-run">
             {result ? (stale ? "Run again on the changed model" : "Run again") : "Run"}
           </button>
         )}
       </div>
+      {semantics === "maximal" && maximalBlocked && (
+        <p className="warn-text small" data-testid="framework-maximal-unsupported">
+          {maximalBlocked}
+        </p>
+      )}
       {busy && (
         <p className="muted small" role="status">
           Running every stage…

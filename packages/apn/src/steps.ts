@@ -281,7 +281,25 @@ export function enabledSteps(net: Net | AmbientNet, M: Marking, opts: EnabledSte
   // Under the weak rule capacity is not one of them (a step may free room for its own output).
   const all = cands(an).list;
   const single = all.filter((c) => stepOk(an, [c], M, rule));
-  const pool = rule === "strict" ? single : all.filter((c) => individuallyOk(c, M) && preFits(c, new Acc(), M));
+  let pool = rule === "strict" ? single : all.filter((c) => individuallyOk(c, M) && preFits(c, new Acc(), M));
+  // Maximal steps: a candidate that shares no structured place (input or output) with any other
+  // candidate cannot conflict with anything, so it is in every maximal step when it is enabled
+  // alone, and in none otherwise. Taking these out first keeps n independent transitions from
+  // costing 2^n search nodes for their one maximal step.
+  let forced: Cand[] = [];
+  if (opts.maximalOnly && maxSize === Infinity && pool.length > 1) {
+    const uses = new Map<string, number>();
+    const slots = (c: Cand) => new Set([...c.pre, ...c.post].map(([sl, g]) => `${sl}|${valueKey(g)}`));
+    const slotSets = pool.map(slots);
+    for (const set of slotSets) for (const k of set) uses.set(k, (uses.get(k) ?? 0) + 1);
+    const alone = new Set(single);
+    const independent = pool.filter((_, i) => [...slotSets[i]].every((k) => uses.get(k) === 1));
+    if (independent.length) {
+      const ind = new Set(independent);
+      forced = independent.filter((c) => alone.has(c));
+      pool = pool.filter((c) => !ind.has(c));
+    }
+  }
   const steps: Step[] = [];
   let truncated = false;
   let nodes = 0;
@@ -334,6 +352,12 @@ export function enabledSteps(net: Net | AmbientNet, M: Marking, opts: EnabledSte
   if (opts.maximalOnly && rule === "weak") {
     const keys = out.map((s) => new Set(s.map(stKey)));
     out = out.filter((s, i) => !keys.some((k, j) => j !== i && k.size > s.length && [...keys[i]].every((x) => k.has(x))));
+  }
+  if (forced.length) {
+    const { byKey } = cands(an);
+    const order = (st: StructuredTransition) => byKey.get(stKey(st))!.order;
+    const extra = forced.map((c) => c.st);
+    out = out.length ? out.map((u) => [...u, ...extra].sort((a, b) => order(a) - order(b))) : truncated ? out : [extra.sort((a, b) => order(a) - order(b))];
   }
   return { steps: out, truncated, enabled: single.map((c) => c.st) };
 }

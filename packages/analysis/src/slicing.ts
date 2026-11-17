@@ -709,50 +709,48 @@ function traceSlice(s: SliceStructure, pt: PTNet, crit: { places: number[]; tran
   return c;
 }
 
-/** Alg. 10: the local reachability graph of the backward slice, kept where it leads to the criterion. */
+/**
+ * Alg. 10: the local reachability graph of the backward slice, kept where it leads to the criterion.
+ *
+ * Wangyang et al. define the graph on safe nets, where a node is the set of marked places. Here a
+ * node is the marking itself, restricted to the places of the backward slice, and the slice's
+ * transitions fire with the net's own firing rule (weights, read, inhibitor, equal and reset arcs,
+ * capacities, marking-dependent weights). On safe ordinary nets this is the same graph; on weighted
+ * nets the Boolean abstraction would be wrong: firing a transition that takes 1 of 3 tokens would
+ * empty the place and hide every later firing that needs it. Restricting to the backward slice
+ * over-approximates the net's behaviour there: transitions outside it only take tokens from places
+ * whose transitions are monotone (backward slicing follows every changer of a place with an
+ * inhibitor or equal arc or a capacity). When the graph exceeds `maxNodes` (an unbounded or large
+ * slice) or a weight cannot be evaluated, the concerned slice (Alg. 11) is used instead.
+ */
 function wangyang(s: SliceStructure, pt: PTNet, crit: { places: number[]; transitions: number[] }, maxNodes: number, notes: string[], signal?: AbortSignal): Core {
   const b = backward(s, crit);
   const BP = b.P.has;
   const tList = b.T.sorted();
-  // Boolean abstraction: a node is the set of marked places of the backward slice.
-  const key = (set: Uint8Array) => {
-    const xs: number[] = [];
-    for (let p = 0; p < set.length; p++) if (set[p]) xs.push(p);
-    return xs.join(",");
-  };
-  const root = new Uint8Array(s.nP);
-  for (let p = 0; p < s.nP; p++) if (BP[p] && pt.m0[p] > 0) root[p] = 1;
-  const nodes: Uint8Array[] = [root];
+  const outside: number[] = [];
+  for (let p = 0; p < s.nP; p++) if (!BP[p]) outside.push(p);
+  const firer = new Firer(pt);
+  const key = (M: Int32Array) => M.join(",");
+  const root = Int32Array.from(pt.m0);
+  for (const p of outside) root[p] = 0;
+  const nodes: Int32Array[] = [root];
   const index = new Map<string, number>([[key(root), 0]]);
   const edges: { from: number; to: number; t: number }[] = [];
-  // A node only says which places are marked (at least one token), so each arc is read for what
-  // that tells: a normal, read or equal arc of constant weight w > 0 needs a marked place; an
-  // inhibitor arc of weight 1 and an equal arc of weight 0 need an empty one. An inhibitor arc of
-  // weight w > 1 blocks only at w tokens or more, which a marked place may or may not hold, so it
-  // does not block here (nor do arcs whose weight depends on the marking): the graph keeps every
-  // firing that may happen. Firing empties the places t consumes from (Alg. 10: MP \ •t) and those
-  // it resets, and marks its outputs.
-  const needMarked = new Map<number, number[]>();
-  const needEmpty = new Map<number, number[]>();
-  const consumed = new Map<number, number[]>();
-  const push = (m: Map<number, number[]>, t: number, p: number) => (m.get(t) ?? m.set(t, []).get(t)!).push(p);
-  for (const a of pt.arcs) {
-    if (a.dir !== "in" || !b.T.has[a.transition]) continue;
-    const w = a.weight;
-    if ((a.kind === "normal" || a.kind === "read" || a.kind === "equal") && w !== null && w > 0) push(needMarked, a.transition, a.place);
-    if ((a.kind === "inhibitor" && w === 1) || (a.kind === "equal" && w === 0)) push(needEmpty, a.transition, a.place);
-    if ((a.kind === "normal" && w !== null && w > 0) || a.kind === "reset") push(consumed, a.transition, a.place);
-  }
   let cut = false;
-  for (let i = 0; i < nodes.length; i++) {
+  let failed: string | undefined;
+  for (let i = 0; i < nodes.length && !failed; i++) {
     if ((i & 255) === 0) checkAbort(signal);
-    const MP = nodes[i];
     for (const t of tList) {
-      if (!(needMarked.get(t) ?? []).every((p) => MP[p])) continue;
-      if ((needEmpty.get(t) ?? []).some((p) => MP[p])) continue;
-      const next = new Uint8Array(MP);
-      for (const p of consumed.get(t) ?? []) next[p] = 0;
-      for (const p of s.outputs[t]) if (BP[p]) next[p] = 1;
+      let next: Int32Array | null;
+      try {
+        next = firer.fire(t, nodes[i]);
+      } catch (e) {
+        failed = `${pt.transitions[t].name}: ${(e as Error).message}`;
+        break;
+      }
+      if (!next) continue;
+      // Places outside the backward slice never decide a firing of its transitions.
+      for (const p of outside) next[p] = 0;
       const k = key(next);
       let j = index.get(k);
       if (j === undefined) {
@@ -767,6 +765,10 @@ function wangyang(s: SliceStructure, pt: PTNet, crit: { places: number[]; transi
       edges.push({ from: i, to: j, t });
     }
   }
+  if (failed) {
+    notes.push(`A weight of the local reachability graph could not be evaluated (${failed}); the concerned slice (Alg. 11) is used instead.`);
+    return forward(s, pt, b);
+  }
   if (cut) {
     notes.push(`The local reachability graph was cut off at ${maxNodes} nodes; the concerned slice (Alg. 11) is used instead.`);
     return forward(s, pt, b);
@@ -777,7 +779,7 @@ function wangyang(s: SliceStructure, pt: PTNet, crit: { places: number[]; transi
   for (const e of edges) preds[e.to].push(e.from);
   const stack: number[] = [];
   nodes.forEach((n, i) => {
-    if (crit.places.some((p) => n[p])) {
+    if (crit.places.some((p) => n[p] > 0)) {
       good[i] = 1;
       stack.push(i);
     }

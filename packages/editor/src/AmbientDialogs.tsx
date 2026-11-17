@@ -94,7 +94,7 @@ function pathTo(g: Crg, parent: (number | null)[], i: number): Step[] {
 const REASONS: Record<NonNullable<Crg["reason"]>, string> = {
   states: "stopped at the state limit",
   edges: "stopped at the edge limit",
-  steps: "some states have more enabled steps than the per-state limit",
+  steps: "some states have more enabled steps than the per-state limit, or need more search than its budget",
   aborted: "stopped",
 };
 
@@ -195,9 +195,9 @@ export function CrgDialog({ Modal, close }: { Modal: ModalType; close: () => voi
               <b>{result.g.edges.length.toLocaleString()}</b>
               <span>edges ({maximalOnly ? "maximal steps" : "steps"})</span>
             </div>
-            <div className={`stat ${result.g.deadlocks.length ? "bad" : "good"}`}>
+            <div className={`stat ${result.g.deadlocks.length ? "bad" : result.g.complete ? "good" : ""}`}>
               <b>{result.g.deadlocks.length}</b>
-              <span>dead states</span>
+              <span>{result.g.complete ? "dead states" : "dead states found (others may be unexplored)"}</span>
             </div>
             <div className="stat">
               <b>{result.g.complete ? "Complete" : "Partial"}</b>
@@ -527,7 +527,12 @@ interface Row {
 }
 
 function toStateGraph(g: Crg): StateGraph {
-  return { markings: g.states, edges: g.edges.map((e) => ({ from: e.from, to: e.to, transitions: [...new Set(e.step.map((s) => s.transition))] })), complete: g.complete };
+  return {
+    markings: g.states,
+    edges: g.edges.map((e) => ({ from: e.from, to: e.to, transitions: [...new Set(e.step.map((s) => s.transition))] })),
+    complete: g.complete,
+    ...(g.complete ? {} : { open: g.open }),
+  };
 }
 
 function safe(f: () => Check | ClassCheck): Check | ClassCheck {
@@ -719,19 +724,21 @@ export function ApnPropsDialog({ Modal, close }: { Modal: ModalType; close: () =
       {graph && graph.net === net && (
         <>
           <p className="muted small">
-            {plural(graph.g.markings.length, "reachable marking")} {graph.g.complete ? "(all of them)" : "explored (stopped at the limit: answers cover the explored part)"},{" "}
+            {plural(graph.g.markings.length, "reachable marking")} {graph.g.complete ? "(all of them)" : "explored, not all of them (a limit was reached or a transition could not be evaluated)"},{" "}
             {graph.semantics === "step" ? "with the step semantics of Sec. 3.3" : "firing one structured transition at a time"}.
+            {!graph.g.complete && " Answers that need every marking say Unknown."}
           </p>
           {table(behaviour)}
           {bounds.length > 0 && (
             <details>
-              <summary>Most tokens per place</summary>
-              <table className="rg-table">
+              <summary>Most tokens per place{graph.g.complete ? "" : " (observed so far)"}</summary>
+              <table className="rg-table" data-testid="apn-bounds">
                 <thead>
                   <tr>
                     <th>Place</th>
-                    <th>of one colour</th>
-                    <th>in total</th>
+                    <th>of one colour, seen</th>
+                    <th>in total, seen</th>
+                    <th>proven bound (one colour / total)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -740,10 +747,15 @@ export function ApnPropsDialog({ Modal, close }: { Modal: ModalType; close: () =
                       <td>{b.name}</td>
                       <td>{b.perColour}</td>
                       <td>{b.total}</td>
+                      <td>
+                        {b.provenPerColour ?? "unknown"} / {b.provenTotal ?? "unknown"}
+                        {!b.complete && b.provenPerColour !== null && <span className="muted"> (capacity)</span>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              {!graph.g.complete && <p className="muted small">The state space is partial: the seen maxima are lower bounds. A proven bound comes from the whole state space or from the place's capacity.</p>}
             </details>
           )}
         </>

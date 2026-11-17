@@ -27,15 +27,32 @@ import {
   TransitionSystem,
   checkCtl,
   criterionFromCtl,
+  describeStepSupport,
   interleavingSystem,
   sliceNet,
   sliceToNet,
+  stepSemanticsSupport,
   stepSystem,
   stubbornSystem,
   toPTNet,
   transitionSystemFromStepGraph,
 } from "@pns/analysis";
 import { ConstructionResult, checkEquivalence, concurrentReachabilityGraph, constructTapn } from "@pns/apn";
+
+/**
+ * Can the net be checked under maximal steps? Ambient nets use their concurrent reachability graph
+ * (their arcs are normal and inhibitor arcs carrying one token). Other nets use the step graph of
+ * their P/T view, which supports normal, read, inhibitor and equal arcs of constant weight but not
+ * reset arcs, marking-dependent weights or modulo nets. Null when supported, otherwise the reason
+ * naming every arc in the way.
+ */
+export function maximalStepsUnsupported(net: Net): string | null {
+  if (isAmbient(net.netClass)) return null;
+  const pt = toPTNet(net);
+  if (pt.errors.length) return null; // reported as a net error by the run itself
+  const s = stepSemanticsSupport(pt);
+  return s.ok ? null : describeStepSupport(s);
+}
 
 /** One state-space measurement. */
 interface SpaceSize {
@@ -274,6 +291,11 @@ export function runFramework(net: Net, opts: FrameworkOptions): FrameworkResult 
   // 2. The unfolded P/T net and the criterion.
   const pt = toPTNet(coloured);
   if (pt.errors.length) throw new Error(`The net has errors: ${pt.errors[0]}`);
+  // Say before any exploration why maximal steps cannot be used, rather than failing per property.
+  if ((opts.semantics ?? "single") === "maximal" && !isAmbient(coloured.netClass)) {
+    const support = stepSemanticsSupport(pt);
+    if (!support.ok) throw new Error(`${describeStepSupport(support)} Check with single steps instead.`);
+  }
   const criterion = new Set(opts.criterion ?? []);
   const formulaInfo = opts.formulas.map((f) => {
     const c = criterionFromCtl(f);

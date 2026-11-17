@@ -16,7 +16,7 @@
   <img alt="React 18" src="https://img.shields.io/badge/React-18-149eca?logo=react&logoColor=white">
   <img alt="Electron" src="https://img.shields.io/badge/Electron-desktop-47848f?logo=electron&logoColor=white">
   <img alt="Installable web app" src="https://img.shields.io/badge/PWA-works%20offline-5a0fc8">
-  <img alt="Version" src="https://img.shields.io/badge/version-0.4.0-2563eb">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.4.1-2563eb">
   <img alt="Tests" src="https://img.shields.io/badge/tests-637%20passing-2da44e">
 </p>
 

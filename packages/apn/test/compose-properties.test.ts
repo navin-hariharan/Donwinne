@@ -10,6 +10,7 @@ import {
   isKBounded,
   isLive,
   isLiveMarking,
+  liveTransitions,
   isOrdinary,
   isPure,
   isReversible,
@@ -138,13 +139,13 @@ describe("Sec. 4.4.1: behavioural properties", () => {
       const { net } = randomComposite(seed, 3);
       const g = reachabilityGraph(net);
       expect(g.complete).toBe(true);
-      const allLive = g.markings.every((_, i) => isLiveMarking(net, i, g));
+      const allLive = g.markings.every((_, i) => isLiveMarking(net, i, g).ok);
       expect(isLive(net, g).ok, `seed ${seed}`).toBe(allLive);
     }
     const bidirectional = fig410();
     const g = reachabilityGraph(bidirectional);
     expect(isLive(bidirectional, g).ok).toBe(true);
-    expect(g.markings.every((_, i) => isLiveMarking(bidirectional, i, g))).toBe(true);
+    expect(g.markings.every((_, i) => isLiveMarking(bidirectional, i, g).ok)).toBe(true);
   });
 
   it("Def. 14: Fig. 4.9 is not live (the users stop in p6 or p13), Fig. 4.10 is", () => {
@@ -164,18 +165,55 @@ describe("Sec. 4.4.1: behavioural properties", () => {
   it("Def. 16: the bound is per structured place (p, c); a place may hold one token of each colour", () => {
     const b = placeBounds(fig49());
     const p1 = fig49().places.find((p) => p.name === "p1")!.id;
-    expect(b.get(p1)).toEqual({ perColour: 1, total: 2 });
+    expect(b.get(p1)).toEqual({ perColour: 1, total: 2, complete: true, provenPerColour: 1, provenTotal: 2 });
   });
 
-  it("Defs 10, 14, 17: a partly explored state space leaves liveness, reversibility and boundedness undecided", () => {
+  it("Defs 10, 14, 17: a partly explored state space leaves liveness and reversibility undecided", () => {
     const net = fig410();
     const g = reachabilityGraph(net, { limit: 2 });
     expect(g.complete).toBe(false);
+    expect(g.open?.length).toBeGreaterThan(0);
     expect(isLive(net, g)).toMatchObject({ ok: false, unknown: true });
     expect(isReversible(net, g)).toMatchObject({ ok: false, unknown: true });
-    expect(isKBounded(net, 5, g)).toMatchObject({ ok: false, unknown: true });
+    // Every transition is unknown, never "not live", on a graph with no proven bottom component.
+    expect([...liveTransitions(net, g).values()].every((v) => v === null)).toBe(true);
+    // The live marking check: transitions not seen in the explored part are unknown, not missing.
+    const unseen = isLiveMarking(net, 0, g);
+    expect(unseen).toMatchObject({ ok: false, unknown: true });
+    expect(unseen.reason).toMatch(/Not decided/);
     // Exceeding k in the explored part decides it.
     expect(isKBounded(net, 0, g).unknown).toBeUndefined();
+  });
+
+  it("Defs 16-17: bounds on a partial graph are observed, and proven only by capacities", () => {
+    const net = fig410();
+    const g = reachabilityGraph(net, { limit: 2 });
+    const b = [...placeBounds(net, g).values()];
+    expect(b.every((x) => !x.complete && x.provenTotal === null)).toBe(true);
+    // Ambient places have capacity 1 per colour unless given, so the per-colour bound is proven.
+    expect(b.every((x) => x.provenPerColour === 1 && x.perColour <= 1)).toBe(true);
+    expect(isKBounded(net, 5, g)).toMatchObject({ ok: true, reason: expect.stringMatching(/capacity/) });
+    // Without capacities nothing above the observed maximum is proven (uncoloured P/T view of the same check).
+    const pt = { ...net, places: net.places.map((p) => ({ ...p, capacity: 3 })) };
+    const g2 = reachabilityGraph(pt, { limit: 2 });
+    expect([...placeBounds(pt, g2).values()].every((x) => x.provenPerColour === 3)).toBe(true);
+  });
+
+  it("Defs 14-15: a proven dead end decides 'not live' even on a partial graph", () => {
+    // Fig. 4.9 stops in p6 or p13: with a limit that still contains such a dead end, the
+    // transitions that never fire there are proven not live.
+    const net = fig49();
+    const full = reachabilityGraph(net);
+    const dead = full.markings.findIndex((_, i) => !full.edges.some((e) => e.from === i));
+    expect(dead).toBeGreaterThan(0);
+    const g = reachabilityGraph(net, { limit: dead + 1 });
+    expect(g.complete).toBe(false);
+    expect(g.open ?? []).not.toContain(dead);
+    expect(isLive(net, g)).toMatchObject({ ok: false });
+    expect(isLive(net, g).unknown).toBeUndefined();
+    expect(isLiveMarking(net, dead, g)).toMatchObject({ ok: false });
+    expect(isLiveMarking(net, dead, g).unknown).toBeUndefined();
+    expect(isLiveMarking(net, dead, full).ok).toBe(false);
   });
 
   it("Def. 10 and Sec. 4.3.2.2.1: the bidirectional step lets users undo the last action, so it is cyclic/reversible", () => {

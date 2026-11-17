@@ -1,6 +1,6 @@
 # Donwinne: what changed and how it was checked
 
-Source: `Donwinne 2.zip`, improved from the two PDFs:
+Donwinne, improved from two publications:
 
 - **Framework chapter:** Konios et al., *A Modular Framework for Modelling and Verification of Activities in Ambient Intelligent Systems*, HCII 2023, LNCS 14029.
 - **Slicing survey:** Khan, Konios and Guelfi, *A Survey of Petri Nets Slicing*, ACM Computing Surveys 51(5), 2018.
@@ -15,7 +15,7 @@ The project already covered the thesis material the chapter builds on:
 - the construction φ, which matches the chapter's Post_NEW and M'0 exactly
 - the equivalence check, the concurrent reachability graph, unfolding and CTL
 
-I left all of it as it was.
+All of it was kept as it was.
 
 ## What is new
 
@@ -65,11 +65,11 @@ I left all of it as it was.
 - **Tests:** 637 pass (613 before, plus 24 new ones). `pnpm typecheck` is clean, the desktop app typechecks, and `pnpm build` succeeds.
 - **The chapter's example (Figs 7–10).** The construction gives Post_NEW and M'0 exactly. Abstract slicing for Q = {p3b, p3w, p3g, p3l} keeps 16 places and the 10 transitions of t1, t2, t4, t5 and t7, as in Fig. 10. The state space drops from 256 to 16 states with single steps, and from 5 to 4 with maximal steps. φ1 and φ2 are true on both the net and the slice, and N and φ(N) are equivalent.
 - **The survey's Fig. 7.** The basic, CTL\*-X and safety slices contain exactly the places and transitions in the figure.
-- **Random nets.** I compared the slices against the full state space on 300 random nets with read and inhibitor arcs and capacities:
+- **Random nets.** The slices were compared against the full state space on 300 random nets with read and inhibitor arcs and capacities:
   - Every model-checking slice reaches exactly the same criterion markings as the full net.
   - Backward slicing keeps every transition that feeds the criterion, and forward slicing keeps every transition that can fire.
   - Stubborn sets find exactly the same deadlocks and, for the given places, exactly the same markings.
-- **In the browser.** I loaded the chapter's example in the built web app and ran both dialogs. Opening the slice works, and there were no console errors.
+- **In the browser.** The chapter's example was loaded in the built web app and both dialogs were run. Opening the slice works, and there were no console errors.
 - **Benchmarks** (`pnpm bench`):
 
   | Run | Time |
@@ -80,8 +80,7 @@ I left all of it as it was.
 ## Known differences
 
 - **Survey Fig. 7 state counts.** The slices match the figure, but the survey's state counts (60/24/12/9) don't. The figure doesn't fully give the initial marking. With every place marked once, the counts are 112/28/14/14, in the same order as Table 1.
-- **docs/examples.** The 1,040 changed `.pn` files under `docs/examples` were already uncommitted changes in the zip you sent. I left them untouched.
-- **Packaging.** `node_modules` and build output aren't included. Run `pnpm install` first.
+- **Setup.** Run `pnpm install` before building or testing.
 
 ## Update 2: Help > Docs
 
@@ -127,10 +126,10 @@ I left all of it as it was.
 
 ## Update 3: UI bugs, security, unused code and a full robustness review
 
-**The bug in your screenshot.** In the Slice dialog the fields ran into each other: the shared form grid gave each field a 150px column, but the inputs had fixed pixel widths and spilled into the next column. The grid is fixed for every dialog that uses it: each field now fills its column and wraps on narrow screens.
+**Slice dialog layout.** In the Slice dialog the fields ran into each other: the shared form grid gave each field a 150px column, but the inputs had fixed pixel widths and spilled into the next column. The grid is fixed for every dialog that uses it: each field now fills its column and wraps on narrow screens.
 
-**Every screen size.** I built an automatic layout checker. It opens every menu, every dialog and the token game for 7 examples, on phone (390px), tablet (820px), laptop (1366px), desktop (1920px) and ultrawide (3440px) screens. It looks for overlapping controls, sideways scrolling, dialogs larger than the screen, and text cut off inside buttons.
-- I confirmed it catches your bug.
+**Every screen size.** An automatic layout check was built. It opens every menu, every dialog and the token game for 7 examples, on phone (390px), tablet (820px), laptop (1366px), desktop (1920px) and ultrawide (3440px) screens. It looks for overlapping controls, sideways scrolling, dialogs larger than the screen, and text cut off inside buttons.
+- It catches the Slice dialog bug above.
 - It found one more real bug: on phones the last bottom-panel tab ran under the Hide button. The tabs now scroll on their own, with a fade at the edge to show there is more.
 - Everything else is clean.
 
@@ -234,4 +233,26 @@ Each finding was checked against the code, the slicing survey and the chapter be
   4. creates the GitHub release `v<version>` with the installers and generated release notes.
 
   If the tag already exists, nothing is built, so ordinary pushes don't make releases. Signing and notarisation are optional; the secrets are listed at the top of the workflow.
-- **Fixed on the way:** the Linux .deb build failed ("Please specify project homepage"). `homepage` is now set in `apps/desktop/package.json`. The Linux build was run here and produced `donwinne-0.4.0-linux-x86_64.AppImage` and `donwinne-0.4.0-linux-amd64.deb`. The Windows and macOS builds can only run on GitHub's machines.
+- **Fixed on the way:** the Linux .deb build failed ("Please specify project homepage"). `homepage` is now set in `apps/desktop/package.json`. A local Linux build produced `donwinne-0.4.0-linux-x86_64.AppImage` and `donwinne-0.4.0-linux-amd64.deb`. The Windows and macOS builds can only run on GitHub's machines.
+
+## Update 7: the v0.4.0 deep code audit
+
+Based on the "Update V0.4.0" commit. Each finding was checked against the code first. All of them were real; one was worse than reported.
+
+| Finding | Verdict | What was done |
+| --- | --- | --- |
+| Maximal-step search can run away (critical) | **Real.** The step limit only counted steps found, but the search visited every combination: 20 independent transitions took 5.7 s for one step, 30 would take hours. | A search-node budget (`maxSearchNodesPerState`, default 1,000,000) with cancellation checks inside the search. Candidates that nothing competes with are only tried at their largest count. Measured: 15/20/25/30 independent transitions now take 17/22/27/32 search nodes and under 3 ms (before: 91 ms and 5.7 s for 15 and 20). A state that hits the step or search limit is left open, and the notes say which limit stopped it. |
+| Maximality with capacities (found while fixing the above) | **Real bug, not in the audit.** A step was called maximal when no *single* transition could be added. With capacities, a step can sometimes be extended by two transitions together (one makes room for the other) but by neither alone. | The check now looks for any enabled extension. A brute-force test enumerates every multiset on 300 random nets (normal, read, inhibitor and equal arcs, capacities, with and without auto-concurrency) and the step graphs match exactly. |
+| `findReachable` says "unreachable" after evaluation errors (critical) | **Real.** | Evaluation errors now make the search incomplete (`complete: false`, with `unresolved` and the first `error`). Regression test with an invalid marking-dependent weight. |
+| Wangyang slicing drops tokens (high) | **Real.** "Marked or not" emptied a place with 3 tokens after taking 1. | The local reachability graph now holds token counts and uses the net's own firing rule on the backward slice. On safe ordinary nets this is the same as the paper. Above the node limit, or if a weight can't be evaluated, it falls back to concerned slicing with a note. Tests: 3 tokens minus 1 keeps 2, weights, the fallback, and EF verdicts equal to the full state space on 300 random nets (half with reset, equal and inhibitor arcs). |
+| `isLiveMarking` and `liveTransitions` on partial graphs (high) | **Real.** | `isLiveMarking` returns Yes / No / Unknown. Yes needs every transition seen firing; No needs nothing unexplored reachable. `liveTransitions` gives `null` for unknown, and `false` only when a fully explored dead end proves it. `isLive` can now say No on a partial graph when that is proven. Graphs now list their open states. |
+| Observed vs proven bounds (medium) | **Real.** | `placeBounds` gives the seen maxima plus `provenPerColour` / `provenTotal`. These are exact on a complete graph; otherwise only the capacity proves a bound. `isKBounded` says Yes on a partial graph when every capacity is at most k. The APN properties dialog shows a "proven bound" column, and a dead-state count of 0 on a partial CRG is no longer green. |
+| Unsupported arcs under maximal steps (high/feature) | **Real.** Reset arcs and marking-dependent weights threw mid-run. | `stepSemanticsSupport(pt)` lists each arc in the way and why. `stepSystem` and the framework refuse such nets up front with that message. Equal arcs are now supported (a test before the step, like read and inhibitor arcs). The docs have a table of what maximal steps support. |
+| Differential tests (validation) | **Added.** | The P/T maximal-step graph matches the APN's maximal-step CRG on 500 random one-colour APNs (with self-loops, several inputs and inhibitor arcs): markings, steps, deadlocks and EF/AG/AG EF verdicts all match. The APN CRG, the T-APN CRG and the unfolded nets' step graphs also agree on Figs 4.9, 4.10, 3.1 and the garage fragment. One documented difference: the thesis's capacity rule (M + Post(U) ≤ K) is stricter than the result-based rule the P/T graph and token game use (the footnote's weak rule). |
+| Same runaway in the APN step search | **Real, not in the audit.** 30 independent transitions hit the 200,000-node limit and left the state open. | Independent structured transitions are added to every maximal step directly: 30 of them now give one complete step. |
+
+Every test the audit listed is in: 30 independent transitions; invalid weight leaves reachability incomplete; 3 tokens minus 1; liveness on a partial APN graph is Unknown; reset plus normal arcs rejected clearly; equal arc of weight 2; read plus normal arc on one place; inhibitor of weight 2; capacity while reducing a full place (and an over-full start is an error, so it can't happen); auto-concurrency multiplicities; maximal steps vs the APN CRG.
+
+**Checked:** 712 tests pass (36 new), typecheck clean, build OK. In the browser, APN properties on Fig. 4.10 with a 10-state limit shows Live as Unknown, 1-bounded as Yes (by capacity) and the proven-bound column, with no axe issues in light or dark mode.
+
+**Version 0.4.1.** This audit is released as 0.4.1: every package.json, `packages/editor/src/version.ts`, the README badge and the file-formats doc. The release workflow builds and publishes `v0.4.1` on the next push to `main`.

@@ -77,7 +77,7 @@ a part on the canvas.
 | Forward slicing (`forward`) | dynamic | testing | The part of the net the initial tokens can reach | Llorens et al. 2008; survey Alg. 8 |
 | Backward and forward (`llorens`) | dynamic | model checking and testing | Paths from M0 that can feed the criterion | Survey Sec. 6.2.1 |
 | Concerned slicing (`concerned`) | dynamic | testing | Paths from M0 that can change the criterion | Survey Alg. 11 |
-| Wangyang slicing (`wangyang`) | dynamic | model checking and testing | Token flows found on the local reachability graph (a node is the set of marked places; an inhibitor arc of weight above 1 does not block there, since a marked place may hold fewer tokens) | Survey Alg. 10 |
+| Wangyang slicing (`wangyang`) | dynamic | model checking and testing | Token flows found on the local reachability graph: the reachable markings of the backward slice, with token counts (on safe ordinary nets the same as the paper's sets of marked places); falls back to concerned slicing above the node limit | Survey Alg. 10 |
 | Trace slicing (`trace`) | dynamic | testing | The firings of one sequence that feed the criterion | Llorens et al. 2008; survey Alg. 9 |
 
 The static algorithms ignore the initial marking; the dynamic ones use it. Rakow's algorithms
@@ -223,6 +223,32 @@ single steps: a slice drops and merges transitions, which changes which steps ar
 maximal steps the slice never decides. A maximal-step counterexample of an ambient net replays as
 steps; for other nets it is shown but not replayed, since their token game fires one transition at
 a time.
+
+**Which nets have maximal steps.** Maximal steps are not available for every net. Ambient nets use
+their concurrent reachability graph. Other nets use the step graph of their P/T view, which
+supports:
+
+| Arc or feature | Under maximal steps |
+|---|---|
+| Normal arcs of constant weight | Supported; a transition may occur several times in one step (auto-concurrency, shown as `2·t`) |
+| Read, inhibitor and equal arcs of constant weight | Supported, as tests on the marking before the step: `t` reads 2 on `p` and takes 1, so at `p = 2` the step `{2·t}` is enabled |
+| Capacities | Supported, on the marking after the step (the token game's rule) |
+| Reset arcs | **Not supported**: a reset empties a place that others in the same step may take from or add to, and a step has no order to settle that |
+| Marking-dependent weights | **Not supported** |
+| Modulo nets | **Not supported** |
+
+`stepSemanticsSupport` lists every arc in the way with the reason, and `stepSystem`, the
+`maximalSteps` semantics of `buildTransitionSystem` and the framework pipeline refuse such a net up
+front with that message (in the dialog, the Run button stays off until single steps are chosen). A step is maximal when no larger step is enabled. With capacities a
+step can be extended by two transitions together (one makes room for the other) but by neither
+alone, and that step is not maximal either.
+
+**Search limits.** The steps of a marking are found by a search whose cost can grow exponentially
+with the number of concurrent transitions. Independent transitions cost nothing extra (30 of them
+give one maximal step after 32 search nodes; the old search needed 2^30). Two limits stop the rest:
+at most 10,000 steps and 1,000,000 search nodes per marking. A marking that reaches either is left
+open: the graph counts as incomplete, the marking is never a dead state, the note says which limit
+stopped it, and every answer that needs that marking is Unknown.
 
 **Transitions that cannot be evaluated.** When a marking-dependent arc weight is negative or not a
 whole number at some reachable marking, it is unknown there whether the transition can fire. That

@@ -20,8 +20,25 @@ import { incidence } from "./model-structure";
 export interface StateGraph {
   markings: Marking[];
   edges: { from: number; to: number; transitions: string[] }[];
-  /** False when exploration stopped at the state limit; the checks then answer only for the explored part. */
+  /**
+   * False when exploration stopped at the state limit or some transition could not be evaluated.
+   * The checks then decide only what the explored part proves and answer "unknown" otherwise.
+   */
   complete: boolean;
+  /**
+   * Incomplete graphs: the states whose successors may not all be listed (not expanded, a successor
+   * beyond the limit, or a transition that could not be evaluated there). When absent, every state
+   * of an incomplete graph counts as open.
+   */
+  open?: number[];
+}
+
+/** The open states of a graph as a predicate (every state when an incomplete graph does not list them). */
+function openStates(g: StateGraph): (s: number) => boolean {
+  if (g.complete) return () => false;
+  if (!g.open) return () => true;
+  const set = new Set(g.open);
+  return (s) => set.has(s);
 }
 
 interface ReachabilityOptions {
@@ -37,7 +54,12 @@ export function reachabilityGraph(net: Net, options: ReachabilityOptions = {}): 
   if ((options.semantics ?? "step") === "step") {
     const g = concurrentReachabilityGraph(net, { maxStates: limit });
     if (g.initial !== 0) throw new Error("Unexpected CRG: the initial state is not state 0");
-    return { markings: g.states, edges: g.edges.map((e) => ({ from: e.from, to: e.to, transitions: [...new Set(e.step.map((s) => s.transition))] })), complete: g.complete };
+    return {
+      markings: g.states,
+      edges: g.edges.map((e) => ({ from: e.from, to: e.to, transitions: [...new Set(e.step.map((s) => s.transition))] })),
+      complete: g.complete,
+      ...(g.complete ? {} : { open: g.open }),
+    };
   }
   const cn = compile(net);
   const errors = cn.problems.filter((p) => p.severity === "error");
@@ -46,20 +68,21 @@ export function reachabilityGraph(net: Net, options: ReachabilityOptions = {}): 
   const markings: Marking[] = [m0];
   const index = new Map<string, number>([[markingKey(m0), 0]]);
   const edges: StateGraph["edges"] = [];
-  let complete = true;
+  const open: number[] = [];
   for (let i = 0; i < markings.length; i++) {
     const M = markings[i];
+    let partial = false;
     for (let t = 0; t < cn.transitions.length; t++) {
       const r = enabledBindings(cn, t, M);
       // A transition that could not be checked here leaves M's successors unknown.
-      if (r.error) complete = false;
+      if (r.error) partial = true;
       for (const b of r.bindings) {
         const M2 = fire(cn, t, b, M);
         const k = markingKey(M2);
         let j = index.get(k);
         if (j === undefined) {
           if (markings.length >= limit) {
-            complete = false;
+            partial = true;
             continue;
           }
           j = markings.length;
@@ -69,8 +92,9 @@ export function reachabilityGraph(net: Net, options: ReachabilityOptions = {}): 
         edges.push({ from: i, to: j, transitions: [cn.transitions[t].id] });
       }
     }
+    if (partial) open.push(i);
   }
-  return { markings, edges, complete };
+  return open.length ? { markings, edges, complete: false, open } : { markings, edges, complete: true };
 }
 
 function successors(g: StateGraph): number[][] {
@@ -138,11 +162,19 @@ function reachableFrom(g: StateGraph, from: number): Set<number> {
 /**
  * Def. 14: the live transitions. t is live iff from every reachable marking some marking that enables t
  * is reachable, i.e. t fires inside every bottom strongly connected component of the graph.
+ *
+ * On a complete graph every answer is true or false. On a partial graph "unknown" is the rule: a
+ * transition is reported not live (false) only when the explored part proves it, i.e. some bottom
+ * component without open states (so truly bottom in the whole graph) never fires it; otherwise
+ * it is null (unknown), since liveness needs every reachable marking.
  */
-export function liveTransitions(net: Net, graph: StateGraph = reachabilityGraph(net)): Map<string, boolean> {
+export function liveTransitions(net: Net, graph: StateGraph = reachabilityGraph(net)): Map<string, boolean | null> {
   const { comp, count } = sccs(graph);
   const bottom = new Array(count).fill(true);
   for (const e of graph.edges) if (comp[e.from] !== comp[e.to]) bottom[comp[e.from]] = false;
+  const isOpen = openStates(graph);
+  const closed = new Array(count).fill(true);
+  for (let s = 0; s < graph.markings.length; s++) if (isOpen(s)) closed[comp[s]] = false;
   const firesIn = new Map<string, Set<number>>();
   for (const e of graph.edges)
     for (const t of e.transitions) {
@@ -150,30 +182,74 @@ export function liveTransitions(net: Net, graph: StateGraph = reachabilityGraph(
       firesIn.get(t)!.add(comp[e.from]);
     }
   const bottoms = [...Array(count).keys()].filter((c) => bottom[c]);
-  return new Map(net.transitions.filter((t) => !t.coarse).map((t) => [t.id, bottoms.every((c) => firesIn.get(t.id)?.has(c) ?? false)]));
+  const provenBottoms = bottoms.filter((c) => closed[c]);
+  return new Map(
+    net.transitions
+      .filter((t) => !t.coarse)
+      .map((t) => {
+        const fires = (c: number) => firesIn.get(t.id)?.has(c) ?? false;
+        if (graph.complete) return [t.id, bottoms.every(fires)];
+        return [t.id, provenBottoms.every(fires) ? null : false];
+      }),
+  );
 }
 
 /** Def. 14: is the net live (every transition live)? */
 export function isLive(net: Net, graph: StateGraph = reachabilityGraph(net)): Check {
-  // Liveness depends on every reachable marking, so a partial graph decides nothing either way.
-  if (!graph.complete) return { ok: false, unknown: true, reason: `Not decided: the state space was not fully explored (${graph.markings.length.toLocaleString("en")} markings so far)` };
   const live = liveTransitions(net, graph);
-  const dead = [...live].filter(([, ok]) => !ok).map(([id]) => net.transitions.find((t) => t.id === id)!.name);
-  if (dead.length) return { ok: false, reason: `Not live: ${dead.slice(0, 5).join(", ")}${dead.length > 5 ? " and others" : ""} can stop being fireable (Def. 14)` };
+  const dead = [...live].filter(([, ok]) => ok === false).map(([id]) => net.transitions.find((t) => t.id === id)!.name);
+  const list = `${dead.slice(0, 5).join(", ")}${dead.length > 5 ? " and others" : ""}`;
+  if (dead.length) return { ok: false, reason: `Not live: ${list} can stop being fireable (Def. 14)${graph.complete ? "" : ", already in the explored part"}` };
+  // Liveness depends on every reachable marking, so a partial graph cannot prove it.
+  if (!graph.complete) return { ok: false, unknown: true, reason: `Not decided: the state space was not fully explored (${graph.markings.length.toLocaleString("en")} markings so far)` };
   return { ok: true, reason: `Live: every transition can always become enabled again (Def. 14)` };
 }
 
-/** Def. 15: is the marking with index `state` live (every transition enabled somewhere after it)? */
-export function isLiveMarking(net: Net, state: number, graph: StateGraph = reachabilityGraph(net)): boolean {
+/**
+ * Def. 15: is the marking with index `state` live (every transition enabled somewhere after it)?
+ * True as soon as every transition fires somewhere after it in the graph; false only when nothing
+ * reachable from it is open, so that no unexplored successor could fire the missing transitions.
+ * Otherwise unknown.
+ */
+export function isLiveMarking(net: Net, state: number, graph: StateGraph = reachabilityGraph(net)): Check {
   const reach = reachableFrom(graph, state);
   const fired = new Set(graph.edges.filter((e) => reach.has(e.from)).flatMap((e) => e.transitions));
-  return net.transitions.filter((t) => !t.coarse).every((t) => fired.has(t.id));
+  const missing = net.transitions.filter((t) => !t.coarse && !fired.has(t.id)).map((t) => t.name);
+  if (!missing.length) return { ok: true, reason: `Live marking: every transition can fire after marking ${state} (Def. 15)` };
+  const isOpen = openStates(graph);
+  if ([...reach].some(isOpen))
+    return {
+      ok: false,
+      unknown: true,
+      reason: `Not decided: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? " and others" : ""} did not fire in the explored part after marking ${state}, which reaches unexplored markings`,
+    };
+  return { ok: false, reason: `Not a live marking: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? " and others" : ""} can never fire after marking ${state} (Def. 15)` };
 }
 
-/** Per place: the largest number of tokens of one colour (Def. 16, M((p, g)) ≤ k) and in total (the ℓ of Sec. 4.5.1). */
-export function placeBounds(net: Net, graph: StateGraph = reachabilityGraph(net)): Map<string, { perColour: number; total: number }> {
+/** Bounds of one place over the markings of a graph (Def. 16 and the ℓ of Sec. 4.5.1). */
+export interface PlaceBound {
+  /** Most tokens of one colour seen in the explored markings (observed, a lower bound on the true maximum). */
+  perColour: number;
+  /** Most tokens in total seen in the explored markings (observed). */
+  total: number;
+  /** The graph covered every reachable marking, so the observed maxima are the exact bounds. */
+  complete: boolean;
+  /**
+   * A proven upper bound on the tokens of one colour: the observed maximum on a complete graph,
+   * otherwise the place's capacity when it has one (markings never exceed K), otherwise null.
+   */
+  provenPerColour: number | null;
+  /** A proven upper bound on the total: the observed maximum on a complete graph, otherwise the capacity of an uncoloured place, otherwise null. */
+  provenTotal: number | null;
+}
+
+/**
+ * Per place: the most tokens of one colour (Def. 16, M((p, g)) ≤ k) and in total (the ℓ of Sec. 4.5.1),
+ * observed over the graph's markings, with the bounds the graph proves (see {@link PlaceBound}).
+ */
+export function placeBounds(net: Net, graph: StateGraph = reachabilityGraph(net)): Map<string, PlaceBound> {
   const cn = compile(net);
-  const out = new Map<string, { perColour: number; total: number }>();
+  const out = new Map<string, PlaceBound>();
   for (const p of cn.places) {
     let perColour = 0;
     let total = 0;
@@ -182,16 +258,31 @@ export function placeBounds(net: Net, graph: StateGraph = reachabilityGraph(net)
       total = Math.max(total, m.size);
       for (const [, n] of m.entries()) perColour = Math.max(perColour, n);
     }
-    out.set(p.id, { perColour, total });
+    // The compiled capacity (ambient nets: 1 per colour unless given) holds in every reachable
+    // marking: per colour for coloured nets, in total for uncoloured ones.
+    const cap = p.capacity;
+    out.set(p.id, {
+      perColour,
+      total,
+      complete: graph.complete,
+      provenPerColour: graph.complete ? perColour : cap ?? null,
+      provenTotal: graph.complete ? total : cap !== undefined && !cn.coloured ? cap : null,
+    });
   }
   return out;
 }
 
 /** Def. 17: is every place k-bounded (Def. 16)? The reason gives the smallest such k. */
 export function isKBounded(net: Net, k: number, graph: StateGraph = reachabilityGraph(net)): Check {
-  const b = Math.max(0, ...[...placeBounds(net, graph).values()].map((x) => x.perColour));
-  // A marking above k in the explored part already disproves k-boundedness; anything else needs the whole graph.
-  if (!graph.complete && b <= k) return { ok: false, unknown: true, reason: `Not decided: the state space was not fully explored (at most ${b} token(s) of one colour so far)` };
+  const bounds = [...placeBounds(net, graph).values()];
+  const b = Math.max(0, ...bounds.map((x) => x.perColour));
+  // A marking above k in the explored part already disproves k-boundedness. Otherwise a partial
+  // graph proves it only when every place has a proven bound (its capacity) of at most k.
+  if (!graph.complete && b <= k) {
+    const proven = bounds.every((x) => x.provenPerColour !== null && x.provenPerColour <= k);
+    if (proven) return { ok: true, reason: `${k}-bounded: every place has a capacity of at most ${k} per colour, which no reachable marking exceeds (Defs 16-17)` };
+    return { ok: false, unknown: true, reason: `Not decided: the state space was not fully explored (at most ${b} token(s) of one colour so far)` };
+  }
   return b <= k ? { ok: true, reason: `${b}-bounded: no place ever holds more than ${b} token(s) of one colour (Defs 16-17)` } : { ok: false, reason: `Some place holds ${b} tokens of one colour (Defs 16-17)` };
 }
 
@@ -265,8 +356,16 @@ interface FoundPath {
   path: { transition: string; binding: Record<string, unknown> }[];
   /** Number of markings looked at. */
   explored: number;
-  /** True when the search covered every reachable marking (so `found: false` means unreachable). */
+  /**
+   * True when the search covered every reachable marking, so `found: false` means unreachable.
+   * False when the limit stopped it or some transition could not be evaluated at some marking
+   * (`found: false` then means "not found", not "unreachable").
+   */
   complete: boolean;
+  /** Markings where some transition could not be evaluated (its successors there are unknown). */
+  unresolved: number;
+  /** The first evaluation error met, if any. */
+  error?: string;
 }
 
 /**
@@ -295,10 +394,20 @@ export function findReachable(net: Net, goal: MarkingGoal, options: { limit?: nu
     return out;
   };
   let complete = true;
+  let unresolved = 0;
+  let error: string | undefined;
+  const result = (found: boolean, path: FoundPath["path"]): FoundPath => ({ found, path, explored: markings.length, complete, unresolved, ...(error ? { error } : {}) });
   for (let i = 0; i < markings.length; i++) {
-    if (ok(markings[i])) return { found: true, path: pathTo(i), explored: markings.length, complete };
-    for (let t = 0; t < cn.transitions.length; t++)
-      for (const b of enabledBindings(cn, t, markings[i]).bindings) {
+    if (ok(markings[i])) return result(true, pathTo(i));
+    let failed = false;
+    for (let t = 0; t < cn.transitions.length; t++) {
+      const r = enabledBindings(cn, t, markings[i]);
+      // An evaluation error means some bindings may be missing: what lies behind them is unknown.
+      if (r.error) {
+        failed = true;
+        error ??= `${cn.transitions[t].name}: ${r.error}`;
+      }
+      for (const b of r.bindings) {
         const M2 = fire(cn, t, b, markings[i]);
         const k = markingKey(M2);
         if (seen.has(k)) continue;
@@ -310,6 +419,11 @@ export function findReachable(net: Net, goal: MarkingGoal, options: { limit?: nu
         markings.push(M2);
         back.push({ from: i, transition: cn.transitions[t].name, binding: b });
       }
+    }
+    if (failed) {
+      unresolved++;
+      complete = false;
+    }
   }
-  return { found: false, path: [], explored: markings.length, complete };
+  return result(false, []);
 }

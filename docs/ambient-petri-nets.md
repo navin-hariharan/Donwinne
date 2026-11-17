@@ -72,8 +72,8 @@ Source paths are relative to this folder. "Ambient" in the "How to use it" colum
 | Def. 12: backward composition | `backwardCompose` | [compose.ts](../packages/apn/src/compose.ts) | **Compose steps…**, tab "Backward (Def. 12)" |
 | Def. 13: composite step nets | `isCompositeStepNet`, with a derivation | same | **APN properties…** |
 | Figs 4.7 to 4.12 | Composition examples | [model-figures.ts](../packages/apn/src/model-figures.ts) | **File > Examples**: Figs 4.9, 4.10 and 4.11 |
-| Defs 14 and 15, Lemma 1: liveness | `isLive` | [model-properties.ts](../packages/apn/src/model-properties.ts) | **APN properties…**, Behaviour |
-| Defs 16 and 17: k-boundedness, structural boundedness | `isKBounded`, `placeBounds`, `isStructurallyBounded` | same | **APN properties…** |
+| Defs 14 and 15, Lemma 1: liveness | `isLive`, `liveTransitions`, `isLiveMarking` | [model-properties.ts](../packages/apn/src/model-properties.ts) | **APN properties…**, Behaviour |
+| Defs 16 and 17: k-boundedness, structural boundedness | `isKBounded`, `placeBounds` (observed and proven bounds), `isStructurallyBounded` | same | **APN properties…** |
 | Def. 18, Lemma 2: pure; Def. 19, Lemma 3: ordinary | `isPure`, `isOrdinary` | same | **APN properties…** |
 | Def. 20: the T-APN class; Sec. 5.2, 5.3 | Net class `tapn`, guards, complementary colours | [tapn.ts](../packages/apn/src/tapn.ts), [steps.ts](../packages/apn/src/steps.ts) | Created by **Construct T-APN**, or **File > New…** |
 | Def. 21, Sec. 6.2 to 6.4: the construction φ | `constructTapn`, `classifyStepNet` | [construction.ts](../packages/apn/src/construction.ts) | Ambient > **Construct T-APN** |
@@ -337,8 +337,20 @@ The **Behaviour** section explores a state space ("State space": **steps: CRG(N)
 | Cyclic / reversible | Def. 10 |
 | *k*-bounded (set *k*, default 1) | Defs 16 and 17 |
 
-"Most tokens per place" lists, for each place, the most tokens of one colour and in total. When the limit cuts the
-graph off, the behavioural verdicts say so.
+"Most tokens per place" lists, for each place, the most tokens of one colour and in total seen in the explored
+markings, and the **proven bound**. On a complete state space the two are the same. On a partial one the seen
+maxima are only lower bounds, and a bound is proven only by the place's capacity (ambient places hold at most one
+token of each colour unless a capacity is given), so the total of a coloured place says "unknown".
+
+When the limit cuts the graph off, or a transition cannot be evaluated at some marking, Unknown stays Unknown:
+
+| Check | On a partial state space |
+| --- | --- |
+| Live (Def. 14) | **No** only when the explored part proves it: a set of fully explored markings that can never leave, in which some transition never fires. Otherwise Unknown |
+| Live marking (Def. 15) | **Yes** when every transition fires after the marking in the explored part; **No** only when nothing reachable from it is unexplored; otherwise Unknown |
+| Cyclic / reversible | Unknown |
+| *k*-bounded | **No** when an explored marking exceeds *k*; **Yes** when every capacity is at most *k*; otherwise Unknown |
+| Reachable marking (`findReachable`) | "Not found" with `complete: false` (not "unreachable") when the limit stopped the search or a transition could not be evaluated |
 
 ## The case studies
 

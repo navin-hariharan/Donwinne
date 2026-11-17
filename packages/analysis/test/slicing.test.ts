@@ -456,6 +456,64 @@ describe("safety slicing and the properties it keeps", () => {
   });
 });
 
+describe("Wangyang slicing (Alg. 10) counts tokens", () => {
+  it("three tokens, consume one: the place keeps two, so later firings that need it stay", () => {
+    // t takes 1 of the 3 tokens on p; u then needs p (and t's output d) to mark the criterion c.
+    // A marked-places abstraction would empty p after t and lose u.
+    const net = ptNet("weighted", { p: 3, d: 0, c: 0 }, ["t", "u"], [
+      ["p", "t"],
+      ["t", "d"],
+      ["p", "u"],
+      ["d", "u"],
+      ["u", "c"],
+    ]);
+    const pt = toPTNet(net);
+    expect(checkCtl(interleavingSystem(pt), "EF(c > 0)").status).toBe("true");
+    const s = sliceNet(pt, { places: ["c"] }, { algorithm: "wangyang" });
+    expect(names(s.pt, "transitions").sort()).toEqual(["t", "u"]);
+    expect(checkCtl(interleavingSystem(s.pt), "EF(c > 0)").status).toBe("true");
+  });
+
+  it("uses weights: a transition needing 2 tokens never fires on 1, so it is not kept", () => {
+    const net = ptNet("weight 2", { p: 1, c: 0 }, ["t"], [
+      ["p", "t", 2],
+      ["t", "c"],
+    ]);
+    expect(names(sliceNet(toPTNet(net), { places: ["c"] }, { algorithm: "wangyang" }).pt, "transitions")).toEqual([]);
+  });
+
+  it("falls back to the concerned slice when the local graph is unbounded", () => {
+    const net = ptNet("unbounded", { a: 1, c: 0 }, ["gen", "t"], [
+      ["a", "gen"],
+      ["gen", "a"],
+      ["gen", "c"],
+      ["c", "t"],
+    ]);
+    const s = sliceNet(toPTNet(net), { places: ["c"] }, { algorithm: "wangyang", maxGraphNodes: 50 });
+    expect(s.notes.join(" ")).toMatch(/cut off at 50 nodes/);
+    expect(names(s.pt, "transitions")).toContain("gen");
+  });
+
+  it("agrees with the state space on random weighted nets, also with extended arcs: EF of a criterion place keeps its verdict", () => {
+    let checked = 0;
+    for (let seed = 1; checked < 300 && seed < 3000; seed++) {
+      const net = randomNet(seed, seed % 2 ? false : "all");
+      const pt = toPTNet(net);
+      if (pt.errors.length) continue;
+      const full = interleavingSystem(pt, { maxStates: 3000 });
+      if (!full.complete) continue;
+      const target = pt.places[seed % pt.places.length].name;
+      const s = sliceNet(pt, { places: [target] }, { algorithm: "wangyang" });
+      const sliced = interleavingSystem(s.pt, { maxStates: 20000 });
+      if (!sliced.complete) continue;
+      const f = `EF(${target} > ${pt.m0[seed % pt.places.length]})`;
+      expect(checkCtl(sliced, f).status, `seed ${seed}: ${f}`).toBe(checkCtl(full, f).status);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(200);
+  });
+});
+
 describe("Wangyang slicing (Alg. 10) with extended arcs", () => {
   it("lets a transition fire past an inhibitor arc of weight 2 when its place holds one token", () => {
     // p holds 1 token and inhibits t only from 2 tokens on, so t fires and feeds the criterion c.

@@ -3,7 +3,8 @@
 import { describe, expect, it } from "vitest";
 import { ambientGarage, fig410, thesisFig3_1 } from "@pns/apn";
 import { criterionFromCtl } from "@pns/analysis";
-import { CHAPTER_PROPERTIES, runFramework, slicePreserves } from "../src/framework";
+import { emptyNet, type Net } from "@pns/core";
+import { CHAPTER_PROPERTIES, maximalStepsUnsupported, runFramework, slicePreserves } from "../src/framework";
 
 describe("framework pipeline", () => {
   it("runs the chapter's Fig. 7 net through every stage (Figs 10-12)", () => {
@@ -117,7 +118,7 @@ describe("framework pipeline", () => {
     const e = runFramework(ambientGarage(), { formulas: ["AG(exit[1] == 0)"], maxStates: 20000, spaces: ["single"], equivalence: false }).verdicts[0];
     expect(e).toMatchObject({ full: "false", fullBy: "full graph", fulfilled: "no" });
     expect(r.stages.at(-1)!.places).toBeLessThan(r.stages[2].places);
-  });
+  }, 30_000); // about 4 s alone; slower when the whole suite runs in parallel
 
   it("goes on with the APN itself when it is not a composite step net (Fig. 3.1)", () => {
     const r = runFramework(thesisFig3_1(), { formulas: ["EF(p3[b] > 0)", "AG(p3[w] == 0)"] });
@@ -133,5 +134,21 @@ describe("framework pipeline", () => {
 
   it("reports unknown names", () => {
     expect(() => runFramework(fig410(), { formulas: ["AG(nope > 0)"] })).toThrow(/nope/);
+  });
+
+  it("refuses maximal steps up front for a net with a reset arc, naming the arc and why", () => {
+    const net = emptyNet("xpt", "reset") as Net;
+    net.places = [{ id: "p", name: "p", x: 0, y: 0, marking: "2" }, { id: "q", name: "q", x: 0, y: 0, marking: "" }];
+    net.transitions = [{ id: "t", name: "t", x: 0, y: 0 }, { id: "u", name: "u", x: 0, y: 0 }];
+    net.arcs = [
+      { id: "a0", source: "p", target: "t", inscription: "1", kind: "normal" },
+      { id: "a1", source: "t", target: "q", inscription: "1", kind: "normal" },
+      { id: "a2", source: "p", target: "u", inscription: "1", kind: "reset" },
+    ];
+    expect(maximalStepsUnsupported(net)).toMatch(/p → u is a reset arc/);
+    expect(() => runFramework(net, { formulas: ["EF(q > 0)"], semantics: "maximal" })).toThrow(/reset arc.*single steps instead/);
+    // Single steps are fine.
+    expect(runFramework(net, { formulas: ["EF(q > 0)"] }).fulfilled).toBe("yes");
+    expect(maximalStepsUnsupported(fig410())).toBeNull();
   });
 });

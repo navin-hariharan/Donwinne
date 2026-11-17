@@ -3,7 +3,7 @@
   "description": "Donwinne is a Petri nets studio",
   "private": true,
   "license": "SEE LICENSE IN LICENSE.md",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "type": "module",
   "engines": {
     "node": ">=20.19"

@@ -74,8 +74,8 @@ export { faultTolerance, injectFaults } from "./fault";
 export type { Fault, FaultToleranceQuery, FaultToleranceReport, FaultSummary } from "./fault";
 export { colourBlindProjection } from "./projection";
 export type { Projection, ProjectionOptions } from "./projection";
-export { stepSystem } from "./steps";
-export type { StepSystemOptions } from "./steps";
+export { stepSystem, stepSemanticsSupport, describeStepSupport, stepStats } from "./steps";
+export type { StepSystemOptions, StepSupport, StepSupportProblem, StepStats } from "./steps";
 export {
   sliceNet,
   resolveCriterion,
