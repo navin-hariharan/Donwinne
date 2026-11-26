@@ -12,6 +12,7 @@ import { RG_PICTURE_LIMIT, rgCsv, rgDot, rgSvg } from "./rgExport";
 import { WATERMARK_HEIGHT } from "./watermark";
 import { APP_VERSION } from "./version";
 import { FTIcon, Icon, MOD } from "./Toolbar";
+import { afterPageChange } from "./Canvas";
 import { compiled, enterPage, newNet, pagePath, select, startSimulation, toast, useStore } from "./store";
 
 function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
@@ -234,7 +235,7 @@ const SHORTCUTS: [string, string][] = [
   ["Double-click canvas", "Add a place (an event in fault trees)"],
   ["Double-click node", "Rename it; inside a place, edit its tokens"],
   ["Double-click arc", "Edit its weight or inscription"],
-  ["Double-click subnet", "Open it; Backspace goes back up"],
+  ["Double-click subnet", "Open it; Backspace with nothing selected goes back up"],
   ["+ / −", "Add or remove a token on the selected places"],
   ["F2 · Enter", "Rename the selected node"],
   ["Right-click", "Options for the thing under the mouse"],
@@ -455,10 +456,11 @@ function SearchDialog() {
   useEffect(() => () => useStore.setState({ highlight: [] }), []);
 
   const go = (h: Hit) => {
-    if (useStore.getState().page !== h.page) enterPage(h.page);
+    const changed = useStore.getState().page !== h.page;
+    if (changed) enterPage(h.page);
     select([h.id]);
     // Let a page switch's fit run first, then zoom in on the match.
-    requestAnimationFrame(() => {
+    afterPageChange(changed, () => {
       showAt({ x: h.x, y: h.y });
       requestAnimationFrame(() => pulse(h.id));
     });

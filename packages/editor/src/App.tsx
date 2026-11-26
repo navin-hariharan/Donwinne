@@ -32,7 +32,7 @@ import {
   undo,
   useStore,
 } from "./store";
-import { zoomBy, zoomToSelection } from "./Canvas";
+import { spacePan, zoomBy, zoomToSelection } from "./Canvas";
 import { MenuCommand, desktop } from "./platform";
 import { propsDocked, useScreenClass, useVisualViewport } from "./responsive";
 import { ArcKind, arcKindsFor, isAmbient, isFaultTree } from "@pns/core";
@@ -42,6 +42,21 @@ import { openDocs } from "./docs/DocsDialog";
 function isTyping(e: KeyboardEvent) {
   const t = e.target as HTMLElement;
   return t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || t.isContentEditable;
+}
+
+/**
+ * The key belongs to a focused control: Enter and Space press a button or link, and arrows move
+ * within a menu, tab list or list box.
+ */
+function inControl(e: KeyboardEvent) {
+  const t = e.target as HTMLElement | null;
+  if (!t?.closest) return false;
+  const control = "button, a[href], summary, [role=button], [role=menuitem], [role=tab], [role=option]";
+  if (e.key === "Enter" && t.closest(control)) return true;
+  // Space stays the token game's run key on the toolbar buttons (after clicking Simulate, say), and
+  // presses buttons only in menus and windows.
+  if (e.key === " " && t.closest(control) && t.closest("[role=dialog], [role=menu], .context-menu, .binding-picker")) return true;
+  return e.key.startsWith("Arrow") && !!t.closest("[role=menu], [role=menubar], [role=tablist], [role=listbox], [role=radiogroup], .context-menu");
 }
 
 const ARC_KEYS: Record<string, ArcKind> = { "1": "normal", "2": "read", "3": "inhibitor", "4": "reset", "5": "equal", "6": "modifier" };
@@ -235,6 +250,13 @@ export function App() {
         return;
       }
       if (isTyping(e)) return;
+      // Keys meant for a focused button, link or menu work it, instead of renaming or moving the selection.
+      if (inControl(e)) return;
+      // An open context menu closes itself on Escape and takes the other keys.
+      if (s.contextMenu) return;
+      // Escape closes the find box even after focus has left it (after clicking a match), without
+      // dropping the selection the click made.
+      if (s.dialog === "search" && e.key === "Escape") return useStore.setState({ dialog: null });
       if (s.dialog && s.dialog !== "search") return;
       if (e.key === "?") return useStore.setState({ dialog: "help" });
       const kk = e.key.toLowerCase();
@@ -246,7 +268,8 @@ export function App() {
         else if (e.key.toLowerCase() === "r") stepRandom();
         else if (e.key.toLowerCase() === "t") useStore.setState({ showTrail: !useStore.getState().showTrail });
         else if (e.key.toLowerCase() === "x" && isAmbient(s.net.netClass)) fireMaximalStep();
-        else if (e.key === " ") (e.preventDefault(), useStore.setState({ running: !s.running }));
+        // Space starts or stops auto-run when it is released (see onKeyUp), so holding it to pan doesn't.
+        else if (e.key === " ") e.preventDefault();
         else if (e.key === "Escape") stopSimulation();
         else if (e.key.toLowerCase() === "f") e.shiftKey ? zoomToSelection() : requestFit();
         return;
@@ -254,7 +277,8 @@ export function App() {
       const k = e.key.toLowerCase();
       if ((e.key === "Delete" || e.key === "Backspace") && s.selection.length) deleteSelection();
       else if (e.key === "Backspace" && s.page) enterPage(parentPage());
-      else if (e.key === "Escape") (setTool("select"), useStore.setState({ selection: [], highlight: [], ftFailed: [] }));
+      // (The canvas handles Escape first while an arc is being drawn: then it only cancels the arc.)
+      else if (e.key === "Escape" && !e.defaultPrevented) (setTool("select"), useStore.setState({ selection: [], highlight: [], ftFailed: [] }));
       else if ((e.key === "F2" || e.key === "Enter") && s.selection.length === 1) {
         e.preventDefault();
         const id = s.selection[0];
@@ -264,7 +288,9 @@ export function App() {
         if (e.key === "Enter" && coarse) enterPage(id);
         else useStore.setState({ inlineEdit: { id, field: isArc ? "inscription" : isNote ? "note" : "name" } });
       } else if ((e.key === "+" || e.key === "=" || e.key === "-" || e.key === "_") && s.selection.length) {
-        for (const id of s.selection) if (s.net.places.some((p) => p.id === id)) adjustTokens(id, e.key === "+" || e.key === "=" ? 1 : -1);
+        // One undo step for all the selected places, however many there are.
+        const key = `tokens-${s.selection.join(",")}`;
+        for (const id of s.selection) if (s.net.places.some((p) => p.id === id)) adjustTokens(id, e.key === "+" || e.key === "=" ? 1 : -1, key);
       } else if (k === "n") setTool("note");
       else if (k === "g") useStore.setState({ snapToGrid: !s.snapToGrid });
       else if (k === "v") setTool("select");
@@ -288,8 +314,19 @@ export function App() {
         moveSelection(s.selection, dx, dy, "nudge");
       }
     };
+    // Token game: a tap of Space starts or stops auto-run; holding it to drag the view does not.
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key !== " " || spacePan.used || isTyping(e) || inControl(e)) return;
+      const s = useStore.getState();
+      if (s.mode !== "simulate" || s.contextMenu || (s.dialog && s.dialog !== "search")) return;
+      useStore.setState({ running: !s.running });
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+    };
   }, []);
 
   // Drop a file onto the window to open it.

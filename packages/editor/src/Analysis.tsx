@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { AnalysisReport, Invariant, NodeRef, ReachabilityCheck, Status, SummaryItem, analyseNet, checkReachability } from "@pns/analysis";
 import { useStore } from "./store";
 import { downloadText } from "./fileOps";
+import { showHighlighted } from "./Canvas";
 
 /** Properties where "yes" is bad news, so the colours flip. */
 const YES_IS_BAD = new Set(["deadTransitions", "inputTransitions", "outputTransitions", "inputPlaces", "outputPlaces", "isolatedNodes"]);
@@ -47,8 +48,8 @@ export function AnalysisDialog({ Modal, close }: { Modal: React.ComponentType<{ 
   useEffect(run, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const show = (ids: string[]) => {
-    if (!ids.length) return;
-    useStore.setState({ highlight: ids, dialog: null });
+    // Highlight them and bring them into view (on their page), not only mark them off-screen.
+    showHighlighted(ids);
   };
 
   const stale = report && (report.net.name !== net.name || report.net.netClass !== net.netClass);

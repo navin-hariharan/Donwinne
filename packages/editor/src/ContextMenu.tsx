@@ -111,8 +111,8 @@ export function ContextMenu() {
       items.push(gate("basic", "Add basic event"), gate("intermediate", "Add intermediate event"), gate("and", "Add AND gate"), gate("or", "Add OR gate"));
     } else {
       items.push(
-        { label: "Add place here", shortcut: "P", action: run(() => addPlace(w.x, w.y)) },
-        { label: "Add transition here", shortcut: "T", action: run(() => addTransition(w.x, w.y)) },
+        { label: "Add place here", action: run(() => addPlace(w.x, w.y)) },
+        { label: "Add transition here", action: run(() => addTransition(w.x, w.y)) },
       );
     }
     items.push({ label: "Add note here", action: run(() => addNote(w.x, w.y)) }, "sep");

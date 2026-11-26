@@ -327,7 +327,9 @@ export function undo() {
   const s = get();
   if (s.mode === "simulate" || !s.past.length) return;
   coalesceKey = null;
-  set({ net: s.past[s.past.length - 1], past: s.past.slice(0, -1), future: [s.net, ...s.future], dirty: true, selection: [] });
+  const net = s.past[s.past.length - 1];
+  // Keep what was selected, where it still exists, so undoing a move leaves the nodes selected.
+  set({ net, past: s.past.slice(0, -1), future: [s.net, ...s.future], dirty: true, selection: stillThere(net, s.selection) });
   fixPage();
 }
 
@@ -335,8 +337,16 @@ export function redo() {
   const s = get();
   if (s.mode === "simulate" || !s.future.length) return;
   coalesceKey = null;
-  set({ net: s.future[0], future: s.future.slice(1), past: [...s.past, s.net], dirty: true, selection: [] });
+  const net = s.future[0];
+  set({ net, future: s.future.slice(1), past: [...s.past, s.net], dirty: true, selection: stillThere(net, s.selection) });
   fixPage();
+}
+
+/** The ids that are still elements of the net (after undo or redo). */
+function stillThere(net: Net, ids: string[]): string[] {
+  if (!ids.length) return ids;
+  const all = new Set<string>([...net.places, ...net.transitions, ...net.arcs, ...(net.notes ?? []), ...(net.faultTree?.nodes ?? []), ...(net.faultTree?.edges ?? [])].map((x) => x.id));
+  return ids.filter((id) => all.has(id));
 }
 
 /** Leave a subnet that no longer exists (after undo or delete). */
@@ -797,7 +807,7 @@ export function renameElement(id: string, name: string) {
 }
 
 /** Add or remove tokens on a place (P/T style nets). */
-export function adjustTokens(id: string, delta: number) {
+export function adjustTokens(id: string, delta: number, coalesce = `tokens-${id}`) {
   const p = get().net.places.find((x) => x.id === id);
   if (!p) return;
   if (isColoured(get().net.netClass)) {
@@ -810,7 +820,7 @@ export function adjustTokens(id: string, delta: number) {
     return;
   }
   const next = Math.max(0, cur + delta);
-  updatePlace(id, { marking: next ? String(Math.round(next * 1e9) / 1e9) : "" }, `tokens-${id}`);
+  updatePlace(id, { marking: next ? String(Math.round(next * 1e9) / 1e9) : "" }, coalesce);
 }
 
 export function setColor(ids: string[], color: string | undefined) {
@@ -827,6 +837,9 @@ export function setColor(ids: string[], color: string | undefined) {
 
 export function moveSelection(ids: string[], dx: number, dy: number, coalesce: string) {
   const idSet = new Set(ids);
+  // Nothing to move (only arcs selected, or no distance): no undo step and no unsaved change.
+  const cur = get().net;
+  if ((!dx && !dy) || ![...cur.places, ...cur.transitions, ...(cur.notes ?? []), ...(cur.faultTree?.nodes ?? [])].some((n) => idSet.has(n.id))) return;
   edit(
     (net) => ({
       ...net,

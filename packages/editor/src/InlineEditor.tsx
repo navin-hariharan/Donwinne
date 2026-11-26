@@ -3,6 +3,21 @@ import { isColoured } from "@pns/core";
 import { PLACE_R, arcPath, ftSize, noteSize, pageView, polylineMid, transSize } from "./geometry";
 import { endCoalesce, renameElement, toast, updateArc, updateNote, updatePlace, useStore } from "./store";
 
+/** Saves the open edit; set while a box is open. */
+let activeCommit: (() => void) | null = null;
+
+/**
+ * Save and close the open inline edit, if any. Code that closes the box from outside (a click on the
+ * canvas) calls this, so what was typed is kept: removing the box first would lose its blur.
+ */
+export function commitInlineEdit(): void {
+  const commit = activeCommit;
+  activeCommit = null;
+  if (!useStore.getState().inlineEdit) return;
+  commit?.();
+  if (useStore.getState().inlineEdit) useStore.setState({ inlineEdit: null });
+}
+
 /** A text box placed over the canvas to edit a name, marking, inscription or note in place. */
 export function InlineEditor() {
   const ie = useStore((s) => s.inlineEdit);
@@ -118,6 +133,7 @@ export function InlineEditor() {
 
   const close = () => {
     done.current = true;
+    activeCommit = null;
     useStore.setState({ inlineEdit: null });
     endCoalesce();
     document.querySelector<SVGSVGElement>("svg.canvas")?.focus();
@@ -139,6 +155,7 @@ export function InlineEditor() {
     }
     close();
   };
+  activeCommit = commit;
 
   const sx = x * view.zoom + view.x;
   const sy = y * view.zoom + view.y;

@@ -16,7 +16,7 @@
   <img alt="React 18" src="https://img.shields.io/badge/React-18-149eca?logo=react&logoColor=white">
   <img alt="Electron" src="https://img.shields.io/badge/Electron-desktop-47848f?logo=electron&logoColor=white">
   <img alt="Installable web app" src="https://img.shields.io/badge/PWA-works%20offline-5a0fc8">
-  <img alt="Version" src="https://img.shields.io/badge/version-0.4.2-2563eb">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.4.3-2563eb">
   <img alt="Tests" src="https://img.shields.io/badge/tests-821%20passing-2da44e">
 </p>
 
@@ -188,7 +188,7 @@ ones that make sense for it. Every class, every arc and the declarations languag
 
 - **Token game** for every discrete class: fire by clicking, step back and forward, fire at random, or run and pause. In coloured nets, every enabled binding is offered.
 - **Why can't it fire?** Clicking or hovering over a transition that cannot fire says why ("stock has 0 tokens, needs 1", an inhibitor arc that blocks, a false guard, a full output place), and the token game tab lists every blocked transition with its reason.
-- **Red token trail** that follows the tokens through the net, so a mistake in a large model shows up as the place where the trail stops. On a deadlock the whole route turns solid red, the stuck tokens pulse, and one click zooms to them.
+- **Red token trail** that follows the tokens through the net, so a mistake in a large model shows up as the place where the trail stops. On a deadlock the whole route turns solid red, the stuck tokens pulse, and the banner steps through them one by one at a readable size, saying why each waiting transition can't fire.
 - **Timed token game** with a global clock and per-transition firing intervals.
 - **Music nets** play a note each time a transition fires.
 - **Stochastic simulation** with Gillespie's direct method, many runs averaged, with a seed for repeatable results.

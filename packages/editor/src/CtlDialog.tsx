@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
-import { Net } from "@pns/core";
+import { Net, isAmbient } from "@pns/core";
 import {
   AdviceComparison,
   CtlError,
@@ -43,7 +43,8 @@ const useCtl = create<{ text: string; label: string; expected?: boolean; list: S
   list: [],
   last: null,
   tab: "formulas",
-  templateId: PROPERTY_TEMPLATES[0]?.id ?? "",
+  // "" until the person picks one: then the default suits the net (see defaultTemplateFor).
+  templateId: "",
   args: {},
 }));
 let nextId = 1;
@@ -292,10 +293,19 @@ function FieldInput({ net, f, value, onChange }: { net: Net; f: TemplateField; v
   }
 }
 
+/**
+ * The template shown before the person picks one: the thesis's ambient templates for ambient nets
+ * (APN, T-APN), and "reach a goal", which fits any net, for the others.
+ */
+function defaultTemplateFor(net: Net): PropertyTemplate {
+  const id = isAmbient(net.netClass) ? PROPERTY_TEMPLATES[0]?.id : "reachGoal";
+  return PROPERTY_TEMPLATES.find((x) => x.id === id) ?? PROPERTY_TEMPLATES[0];
+}
+
 function TemplatePicker({ net, onUse }: { net: Net; onUse: (t: PropertyTemplate, formulas: { label: string; text: string; expected: boolean }[]) => void }) {
   const templateId = useCtl((s) => s.templateId);
   const args = useCtl((s) => s.args);
-  const t = PROPERTY_TEMPLATES.find((x) => x.id === templateId) ?? PROPERTY_TEMPLATES[0];
+  const t = PROPERTY_TEMPLATES.find((x) => x.id === templateId) ?? defaultTemplateFor(net);
   const [error, setError] = useState<string | null>(null);
   const groups = useMemo(() => {
     const m = new Map<string, PropertyTemplate[]>();

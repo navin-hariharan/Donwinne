@@ -32,7 +32,7 @@ import {
   updateTransition,
   useStore,
 } from "./store";
-import { InlineEditor } from "./InlineEditor";
+import { InlineEditor, commitInlineEdit } from "./InlineEditor";
 import { ContextMenu } from "./ContextMenu";
 import { Minimap } from "./Minimap";
 import { Breadcrumbs, SelectionBar } from "./Overlays";
@@ -101,6 +101,8 @@ export function Canvas() {
   const drag = useRef<Drag>(null);
   const [band, setBand] = useState<{ a: Point; b: Point } | null>(null);
   const [arcDraft, setArcDraft] = useState<{ source: string; points: Point[]; cursor: Point } | null>(null);
+  const arcDraftRef = useRef(arcDraft);
+  arcDraftRef.current = arcDraft;
   const [cursor, setCursor] = useState<Point | null>(null);
   const [hover, setHover] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -173,6 +175,34 @@ export function Canvas() {
     }
     return out;
   }, [dead, showTrail, marking, cn, net]);
+  // The same places as a list for the deadlock navigator, with their tokens and the transitions that
+  // wait on them (and why each can't fire). Independent of the trail, so it works with it off too.
+  const stuckList = useMemo<StuckPlace[]>(() => {
+    if (!dead || !marking) return [];
+    const placeById = new Map(net.places.map((p) => [p.id, p] as const));
+    const transById = new Map(net.transitions.map((t) => [t.id, t] as const));
+    const cnTrans = new Map(cn.transitions.map((t) => [t.id, t] as const));
+    const pageName = (id: string | undefined) => (id ? (placeById.get(id)?.name ?? transById.get(id)?.name ?? "") : "");
+    const seen = new Set<number>();
+    const out: StuckPlace[] = [];
+    for (const p of cn.places) {
+      const m = marking[p.slot];
+      if (!m?.size || seen.has(p.slot)) continue;
+      seen.add(p.slot);
+      const np = placeById.get(p.id);
+      if (!np) continue;
+      const waiting: StuckPlace["waiting"] = [];
+      for (const a of net.arcs) {
+        if (a.source !== p.id || waiting.some((w) => w.id === a.target)) continue;
+        const t = transById.get(a.target);
+        const ct = cnTrans.get(a.target);
+        if (!t) continue;
+        waiting.push({ id: t.id, name: t.name, why: ct ? disabledReasons(cn, ct.index, marking)[0] ?? "" : "" });
+      }
+      out.push({ id: p.id, name: p.name, tokens: showTokens(cn, m) || String(m.size), page: pageName(np.parent), waiting });
+    }
+    return out;
+  }, [dead, marking, cn, net]);
   const ft = isFaultTree(net.netClass);
 
   useEffect(() => {
@@ -190,6 +220,10 @@ export function Canvas() {
     const b = netBounds(pageView(s.net, s.page).net);
     const zoom = Math.min(1.6, Math.max(0.1, Math.min(r.width / b.w, r.height / b.h)));
     useStore.setState({ view: { zoom, x: (r.width - b.w * zoom) / 2 - b.x * zoom, y: (r.height - b.h * zoom) / 2 - b.y * zoom } });
+    // A jump into another page waits for this fit, then shows its target.
+    const then = afterFit;
+    afterFit = null;
+    then?.();
   }
 
   // When a panel opens or grows and squeezes the canvas, keep a drawing that was fully in view
@@ -225,8 +259,15 @@ export function Canvas() {
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.code === "Space" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) spaceDown.current = true;
-      if (e.key === "Escape") setArcDraft(null);
+      if (e.code === "Space" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+        if (!e.repeat) spacePan.used = false;
+        spaceDown.current = true;
+      }
+      if (e.key === "Escape" && arcDraftRef.current) {
+        // Escape cancels the arc being drawn and nothing else: the Arc tool and the selection stay.
+        setArcDraft(null);
+        e.preventDefault();
+      }
     };
     const up = (e: KeyboardEvent) => {
       if (e.code === "Space") spaceDown.current = false;
@@ -403,7 +444,8 @@ export function Canvas() {
     const h = hit(e);
     const v = useStore.getState().view;
     useStore.setState({ contextMenu: null });
-    if (inlineEdit) useStore.setState({ inlineEdit: null });
+    // Save what was typed: closing the box here would remove it before its blur could save.
+    if (inlineEdit) commitInlineEdit();
     longPressFired.current = false;
     // Fingers and pens have no right button: holding still opens the context menu.
     if (e.pointerType !== "mouse" && mode === "edit") {
@@ -431,6 +473,8 @@ export function Canvas() {
     }
 
     if (e.button === 1 || e.button === 2 || spaceDown.current || (mode === "simulate" && !h)) {
+      // Space was held to pan, so releasing it shouldn't also start or stop the token game.
+      if (spaceDown.current) spacePan.used = true;
       drag.current = {
         kind: "pan",
         startScreen: { x: e.clientX, y: e.clientY },
@@ -826,8 +870,12 @@ export function Canvas() {
         return;
       }
     }
-    if (mode !== "edit" || tool !== "select") return;
+    // Renaming and editing by double-click work whatever drawing tool is active (the Place tool stays
+    // on after adding a place); only the Arc tool, whose clicks draw, and adding on empty canvas
+    // need the Select tool.
+    if (mode !== "edit" || tool === "arc") return;
     if (!h) {
+      if (tool !== "select") return;
       // Double-click on empty canvas adds the node kind the user is most likely to want next.
       const p = toWorld(e);
       if (ft) addFTNode("basic", p.x, p.y);
@@ -1006,7 +1054,7 @@ export function Canvas() {
       <Breadcrumbs />
       <SelectionBar />
       {mode === "simulate" && <SimControls />}
-      {dead && <DeadlockBanner stuck={stuck} firings={simIndex - Math.min(trailFrom, simIndex)} onZoom={() => stuck && zoomTo(stuck)} />}
+      {dead && <DeadlockBanner stuck={stuck} places={stuckList} firings={simIndex - Math.min(trailFrom, simIndex)} onShowAll={() => zoomTo(stuck ?? new Set(stuckList.map((p) => p.id)))} />}
       <InlineEditor />
       <ContextMenu />
       <BindingPicker />
@@ -1071,38 +1119,170 @@ function DropRing({ shape, k }: { shape: ReturnType<typeof shapeOf>; k: number }
   return <rect x={n.x - w / 2 - 6} y={n.y - h / 2 - 6} width={w + 12} height={h + 12} rx={4} className="drop-ring" style={{ strokeWidth: 2.5 * k }} />;
 }
 
-/** Shown on the canvas when the token game reaches a marking where nothing can fire. */
-function DeadlockBanner({ stuck, firings, onZoom }: { stuck: Set<string> | undefined; firings: number; onZoom: () => void }) {
+/** A place still holding tokens in a deadlock, for the stuck-token navigator. */
+interface StuckPlace {
+  id: string;
+  name: string;
+  /** Its tokens as the token game writes them ("3", "2'red + 1'blue"). */
+  tokens: string;
+  /** The subnet it sits in ("" on the top page). */
+  page: string;
+  /** Transitions it feeds, each with the first reason it can't fire. */
+  waiting: { id: string; name: string; why: string }[];
+}
+
+/** Go to a place at a readable zoom (entering its subnet) and select it. */
+function focusPlace(id: string) {
+  const s = useStore.getState();
+  const n = s.net.places.find((p) => p.id === id);
+  if (!n) return;
+  const changed = (n.parent ?? null) !== s.page;
+  if (changed) enterPage(n.parent ?? null);
+  select([id]);
+  // Let a page switch's fit run first, then centre the place in the canvas area the banner leaves
+  // free, so neither the banner nor its list covers it.
+  afterPageChange(changed, () => {
+    const canvas = document.querySelector<SVGSVGElement>("svg.canvas")?.getBoundingClientRect();
+    const banner = document.querySelector(".deadlock-banner")?.getBoundingClientRect();
+    let at: Point | undefined;
+    if (canvas && banner && banner.bottom > canvas.top && banner.top < canvas.bottom) {
+      // The larger free band: below the banner (desktop, where it hangs from the top) or above it
+      // (phones, where it sits at the bottom).
+      const above = banner.top - canvas.top;
+      const below = canvas.bottom - banner.bottom;
+      at = below >= above ? { x: canvas.width / 2, y: banner.bottom - canvas.top + Math.max(60, below / 2) } : { x: canvas.width / 2, y: Math.max(40, above / 2) };
+    }
+    centerOn({ x: n.x, y: n.y }, READABLE_ZOOM, at);
+  });
+}
+
+/** "3 tokens" for a plain count, the colours as written otherwise ("2'red + 1'blue"). */
+function tokensLabel(tokens: string): string {
+  return /^\d+$/.test(tokens) ? `${tokens} ${tokens === "1" ? "token" : "tokens"}` : tokens;
+}
+
+/**
+ * Shown on the canvas when the token game reaches a marking where nothing can fire. Its navigator
+ * steps through the places still holding tokens one at a time, at a size where the tokens can be
+ * read, and its list shows each one's tokens and what waits on them.
+ */
+function DeadlockBanner({ stuck, places, firings, onShowAll }: { stuck: Set<string> | undefined; places: StuckPlace[]; firings: number; onShowAll: () => void }) {
   const showTrail = useStore((s) => s.showTrail);
   const simIndex = useStore((s) => s.simIndex);
   // Hidden for this marking only: stepping back and reaching a deadlock again shows it again.
   const [hiddenAt, setHiddenAt] = useState<number | null>(null);
+  const [index, setIndex] = useState(-1);
+  const [listOpen, setListOpen] = useState(false);
+  // A new deadlock starts the navigator over.
+  useEffect(() => {
+    setIndex(-1);
+    setListOpen(false);
+  }, [simIndex]);
+  // Keep the place being shown visible in the list.
+  const listRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    listRef.current?.querySelector(".current")?.scrollIntoView({ block: "nearest" });
+  }, [index, listOpen]);
   if (hiddenAt === simIndex) return null;
+
+  const go = (i: number) => {
+    const n = places.length;
+    if (!n) return;
+    const next = ((i % n) + n) % n;
+    setIndex(next);
+    focusPlace(places[next].id);
+  };
+  const current = index >= 0 ? places[index] : undefined;
+  const count = places.length;
+
   return (
     <div className="deadlock-banner" role="status" data-testid="deadlock-banner">
-      <span>
-        <strong>Deadlock:</strong> nothing can fire.{" "}
-        {showTrail
-          ? firings
-            ? `The red trail shows the ${firings === 1 ? "firing" : `${firings} firings`} that led here${stuck?.size ? "; the pulsing places hold the stuck tokens" : ""}.`
-            : stuck?.size
-              ? "The pulsing places hold the stuck tokens."
-              : "No tokens are left."
-          : "Turn on the red trail in the token game to see how the tokens got here."}
-      </span>
-      {showTrail && !!stuck?.size && (
-        <button className="small" onClick={onZoom}>
-          Show stuck tokens
+      <div className="deadlock-row">
+        <span className="deadlock-text">
+          <strong>Deadlock:</strong> nothing can fire.{" "}
+          {count === 0
+            ? "No tokens are left."
+            : `${count === 1 ? "1 place still holds" : `${count} places still hold`} tokens.`}{" "}
+          {showTrail
+            ? firings
+              ? `The red trail shows the ${firings === 1 ? "firing" : `${firings} firings`} that led here.`
+              : ""
+            : "Turn on the red trail to see how the tokens got here."}
+        </span>
+        <button className="icon small deadlock-close" onClick={() => setHiddenAt(simIndex)} title="Hide this message" aria-label="Hide this message">
+          ×
         </button>
+      </div>
+      <div className="deadlock-row deadlock-actions">
+        {count > 0 && (
+          <div className="stuck-nav" role="group" aria-label="Stuck tokens">
+            <button className="small stuck-arrow" onClick={() => go(index - 1)} title="Previous place with stuck tokens" aria-label="Previous place with stuck tokens">
+              ‹
+            </button>
+            <button className="small stuck-current" onClick={() => (current ? focusPlace(current.id) : go(0))} title={current ? "Show this place again" : "Go to the first place with stuck tokens"}>
+              {current ? (
+                <>
+                  <span className="stuck-name">{current.name}</span>
+                  <span className="stuck-tokens mono">{tokensLabel(current.tokens)}</span>
+                  <span className="muted">
+                    {index + 1}/{count}
+                  </span>
+                </>
+              ) : (
+                "Show stuck tokens"
+              )}
+            </button>
+            <button className="small stuck-arrow" onClick={() => go(index + 1)} title="Next place with stuck tokens" aria-label="Next place with stuck tokens">
+              ›
+            </button>
+            <button className={`small${listOpen ? " active" : ""}`} aria-expanded={listOpen} onClick={() => setListOpen(!listOpen)} title="List every place with stuck tokens">
+              List
+            </button>
+          </div>
+        )}
+        <span className="spacer" />
+        {simIndex > 0 && (
+          <button className="small" onClick={() => simGoto(simIndex - 1)} title="Go back one firing (←)">
+            Step back
+          </button>
+        )}
+      </div>
+      {current && current.waiting.length > 0 && !listOpen && (
+        <div className="stuck-why">
+          {current.waiting.slice(0, 3).map((w) => (
+            <span key={w.id}>
+              <b>{w.name}</b> {w.why ? `can't fire: ${w.why}` : "can't fire"}
+            </span>
+          ))}
+          {current.waiting.length > 3 && <span className="muted">and {current.waiting.length - 3} more</span>}
+        </div>
       )}
-      {simIndex > 0 && (
-        <button className="small" onClick={() => simGoto(simIndex - 1)} title="Go back one firing (←)">
-          Step back
-        </button>
+      {listOpen && (
+        <div className="stuck-list-wrap">
+          <ul className="stuck-list" ref={listRef}>
+            {places.map((p, i) => (
+              <li key={p.id}>
+                <button className={i === index ? "current" : ""} onClick={() => go(i)}>
+                  <span className="stuck-name">{p.name}</span>
+                  <span className="stuck-tokens mono">{tokensLabel(p.tokens)}</span>
+                  {p.page && <span className="muted small">in {p.page}</span>}
+                  {p.waiting.length > 0 && (
+                    <span className="stuck-waits muted small">
+                      waits for {p.waiting.slice(0, 3).map((w) => w.name).join(", ")}
+                      {p.waiting.length > 3 ? ` +${p.waiting.length - 3}` : ""}
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {(stuck?.size ?? count) > 1 && (
+            <button className="small ghost" onClick={onShowAll} title="Fit every place with stuck tokens on this page into view">
+              Show all on this page
+            </button>
+          )}
+        </div>
       )}
-      <button className="icon small" onClick={() => setHiddenAt(simIndex)} title="Hide this message" aria-label="Hide this message">
-        ×
-      </button>
     </div>
   );
 }
@@ -1289,6 +1469,25 @@ function zoomTo(ids: Set<string>): boolean {
   return true;
 }
 
+/**
+ * Highlight elements found by a dialog (analysis, slicing...), close it and bring them into view:
+ * on this page when any of them (or a subnet holding them) is here, otherwise on the top page.
+ */
+export function showHighlighted(ids: string[]): void {
+  if (!ids.length) return;
+  const s = useStore.getState();
+  const parentOf = new Map<string, string | undefined>([...s.net.places, ...s.net.transitions, ...(s.net.notes ?? [])].map((n) => [n.id, n.parent]));
+  for (const a of s.net.arcs) parentOf.set(a.id, parentOf.get(a.source));
+  // The elements and every subnet holding them, so a subnet node stands in for what is inside it.
+  const wanted = new Set<string>();
+  for (const id of ids) for (let cur: string | undefined = id, n = 0; cur && n < 64; cur = parentOf.get(cur), n++) wanted.add(cur);
+  const here = [...wanted].some((id) => (parentOf.get(id) ?? null) === s.page);
+  useStore.setState({ highlight: ids, dialog: null });
+  const changed = !here && s.page !== null;
+  if (changed) enterPage(null);
+  afterPageChange(changed, () => void zoomTo(wanted));
+}
+
 /** View › Zoom to selection: the selected elements (an arc with its two nodes), or the whole page when nothing is selected. */
 export function zoomToSelection() {
   const s = useStore.getState();
@@ -1310,12 +1509,45 @@ export function zoomBy(factor: number) {
   useStore.setState({ view: { zoom, x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k } });
 }
 
-/** Scroll so a world point is centred. */
-export function centerOn(p: Point) {
+/**
+ * Scroll so a world point is centred. With `minZoom`, a view zoomed out further than that zooms in to
+ * it, so the element shown there can be read (labels and tokens are drawn at 100%).
+ */
+export function centerOn(p: Point, minZoom?: number, at?: Point) {
   const v = useStore.getState().view;
   const el = document.querySelector<SVGSVGElement>("svg.canvas");
   const r = el?.getBoundingClientRect() ?? { width: 800, height: 600 };
-  useStore.setState({ view: { ...v, x: r.width / 2 - p.x * v.zoom, y: r.height / 2 - p.y * v.zoom } });
+  const zoom = minZoom !== undefined && v.zoom < minZoom ? Math.min(4, minZoom) : v.zoom;
+  // `at`: where on the canvas (in its own pixels) the point should land; the middle by default.
+  const sx = at?.x ?? r.width / 2;
+  const sy = at?.y ?? r.height / 2;
+  useStore.setState({ view: { zoom, x: sx - p.x * zoom, y: sy - p.y * zoom } });
+}
+
+/** Zoom that makes nodes, names and tokens comfortable to read when jumping to one element. */
+export const READABLE_ZOOM = 1;
+
+/** Whether the canvas was panned while Space was held (set by the canvas, read when Space is released). */
+export const spacePan = { used: false };
+
+/** Runs once after the next fit of the page (entering a page fits it). */
+let afterFit: (() => void) | null = null;
+
+/**
+ * Show something after a possible page change: entering a page fits it to the screen, which would
+ * undo a view set before it, so `show` then waits for that fit; on the same page it runs next frame.
+ */
+export function afterPageChange(changedPage: boolean, show: () => void): void {
+  if (changedPage) {
+    afterFit = show;
+    // If no fit comes (the canvas isn't there), don't leave it waiting for the next one.
+    setTimeout(() => {
+      if (afterFit === show) {
+        afterFit = null;
+        show();
+      }
+    }, 500);
+  } else requestAnimationFrame(show);
 }
 
 export { edit, distToSegment };

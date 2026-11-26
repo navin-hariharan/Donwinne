@@ -69,8 +69,9 @@ nets the step token game explains blocked colour modes the same way.
 ### The net is dead. How did it get there?
 
 When nothing can fire, the [red token trail](simulation.md#the-red-token-trail-and-deadlocks) turns
-solid and shows the route into the deadlock, the places with stuck tokens pulse red, and **Show stuck
-tokens** zooms to them. Step back with ← to see the firings one by one. **Analyse > Net properties and
+solid and shows the route into the deadlock, and the places with stuck tokens pulse red. **Show stuck
+tokens** in the banner goes to them one at a time, at a readable size, and says why each waiting transition
+can't fire; **List** shows them all. Step back with ← to see the firings one by one. **Analyse > Net properties and
 invariants…** also gives the shortest path to a deadlock.
 
 ### How do I start the game from a different marking?

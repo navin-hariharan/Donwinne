@@ -25,6 +25,7 @@ import {
 } from "@pns/analysis";
 import { loadNet, toast, useStore } from "./store";
 import { downloadText } from "./fileOps";
+import { showHighlighted } from "./Canvas";
 import { autoLayout } from "./layout";
 import { placeChoices, replayTrace } from "./ctl";
 import { CHAPTER_PROPERTIES, CheckSemantics, FrameworkResult, Fulfilled, SPACE_LABEL, SpaceKind, maximalStepsUnsupported, runFramework } from "./framework";
@@ -338,7 +339,7 @@ export function SlicingDialog({ Modal, close }: { Modal: ModalType; close: () =>
             </p>
           ))}
           <div className="rg-head">
-            <button className="small" onClick={() => useStore.setState({ highlight: kept(slice), dialog: null })}>
+            <button className="small" onClick={() => showHighlighted(kept(slice))}>
               Highlight the slice
             </button>
             <button className="small" onClick={() => openSlice(slice)}>
@@ -388,7 +389,7 @@ export function SlicingDialog({ Modal, close }: { Modal: ModalType; close: () =>
                       <td>{part.transitions.map((t) => parts.pt.transitions[t].name).join(", ") || "none"}</td>
                       <td className="muted">{part.reason}</td>
                       <td>
-                        <button className="small" disabled={parts.net !== net} onClick={() => useStore.setState({ highlight: partIds(parts.pt, part), dialog: null })}>
+                        <button className="small" disabled={parts.net !== net} onClick={() => showHighlighted(partIds(parts.pt, part))}>
                           Highlight
                         </button>
                       </td>

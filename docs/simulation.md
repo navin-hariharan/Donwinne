@@ -90,7 +90,9 @@ When the token game reaches a **deadlock** (nothing can fire, and in a timed net
 
 - the whole trail turns solid red and stays that way, showing the complete route that led to the deadlock;
 - the places that still hold tokens pulse with a red ring: these are the tokens that are stuck;
-- a banner says how many firings led there, with **Show stuck tokens** (zooms to them) and **Step back**.
+- a banner says how many places still hold tokens and how many firings led there, with **Step back**;
+- **Show stuck tokens** in the banner takes you to the first of those places at a size where its tokens can be read (100%, entering its subnet if needed) and selects it. The arrows **‹ ›** step to the previous and next place, the button between them shows the place's name, its tokens and where it is in the list (for example *3/8*), and underneath, each transition it feeds says why it can't fire;
+- **List** shows every place with stuck tokens, with its tokens, its subnet and the transitions waiting for it; click one to go there. **Show all on this page** fits them all into view at once.
 
 | Control | Key | Action |
 | --- | --- | --- |

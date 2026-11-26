@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Net, isColoured, isFaultTree, timeBase } from "@pns/core";
 import { enterPage, select, updateArc, updatePlace, updateTransition, useStore } from "./store";
-import { centerOn } from "./Canvas";
+import { READABLE_ZOOM, afterPageChange, centerOn } from "./Canvas";
 import { ARC_KIND_INFO } from "./Toolbar";
 
 type Kind = "places" | "transitions" | "arcs" | "hierarchy";
@@ -14,10 +14,11 @@ export function revealElement(id: string) {
   const nodeId = arc ? arc.source : id;
   const n = net.places.find((p) => p.id === nodeId) ?? net.transitions.find((t) => t.id === nodeId) ?? net.faultTree?.nodes.find((f) => f.id === nodeId);
   if (!n) return;
-  if ((n.parent ?? null) !== s.page) enterPage(n.parent ?? null);
+  const changed = (n.parent ?? null) !== s.page;
+  if (changed) enterPage(n.parent ?? null);
   select([id]);
-  // Let a page switch's fit run first, then centre on the element.
-  requestAnimationFrame(() => centerOn({ x: n.x, y: n.y }));
+  // Let a page switch's fit run first, then centre on the element at a readable size.
+  afterPageChange(changed, () => centerOn({ x: n.x, y: n.y }, READABLE_ZOOM));
 }
 
 function pageName(net: Net, parent: string | undefined): string {
@@ -69,6 +70,11 @@ export function ElementsPanel() {
   const firstRow = useRef<HTMLTableRowElement>(null);
   const [view, setView] = useState({ top: 0, height: 600 });
   const [rowH, setRowH] = useState(27);
+  /**
+   * The row order while a cell is being edited: typing a name or marking doesn't re-sort or re-filter
+   * the table, so the row being edited stays where it is. Released when focus leaves the table.
+   */
+  const [frozen, setFrozen] = useState<string[] | null>(null);
   const ft = isFaultTree(net.netClass);
   const coloured = isColoured(net.netClass);
   const tb = timeBase(net.netClass);
@@ -80,6 +86,7 @@ export function ElementsPanel() {
 
   useEffect(() => {
     setSort(null);
+    setFrozen(null);
     anchor.current = null;
     if (bodyRef.current) bodyRef.current.scrollTop = 0;
   }, [kind]);
@@ -129,20 +136,38 @@ export function ElementsPanel() {
   };
 
   const desc = !!sort?.desc;
-  const places = sortRows(
-    net.places.filter((p) => !p.coarse && match(p.name, p.marking, p.colourSet, p.comment)),
-    sort && placeCols[sort.key],
-    desc,
+  // While a cell is edited, the rows keep the order (and membership) they had when editing began.
+  const keepOrder = <T extends { id: string }>(k: Kind, list: T[], all: T[]): T[] => {
+    if (!frozen || kind !== k) return list;
+    const byId = new Map(all.map((x) => [x.id, x] as const));
+    return frozen.flatMap((id) => byId.get(id) ?? []);
+  };
+  const places = keepOrder(
+    "places",
+    sortRows(
+      net.places.filter((p) => !p.coarse && match(p.name, p.marking, p.colourSet, p.comment)),
+      sort && placeCols[sort.key],
+      desc,
+    ),
+    net.places,
   );
-  const transitions = sortRows(
-    net.transitions.filter((t) => !t.coarse && match(t.name, t.rate, t.guard, t.comment)),
-    sort && transitionCols[sort.key],
-    desc,
+  const transitions = keepOrder(
+    "transitions",
+    sortRows(
+      net.transitions.filter((t) => !t.coarse && match(t.name, t.rate, t.guard, t.comment)),
+      sort && transitionCols[sort.key],
+      desc,
+    ),
+    net.transitions,
   );
-  const arcs = sortRows(
-    net.arcs.filter((a) => match(nameOf.get(a.source), nameOf.get(a.target), a.inscription, a.kind)),
-    sort && arcCols[sort.key],
-    desc,
+  const arcs = keepOrder(
+    "arcs",
+    sortRows(
+      net.arcs.filter((a) => match(nameOf.get(a.source), nameOf.get(a.target), a.inscription, a.kind)),
+      sort && arcCols[sort.key],
+      desc,
+    ),
+    net.arcs,
   );
   const rows: { id: string }[] = kind === "places" ? places : kind === "transitions" ? transitions : kind === "arcs" ? arcs : [];
   const ordered = rows.map((r) => r.id);
@@ -206,7 +231,17 @@ export function ElementsPanel() {
         {kind !== "hierarchy" && <input className="elements-filter" placeholder="Filter…" aria-label="Filter elements" value={filter} onChange={(e) => setFilter(e.target.value)} />}
         {kind !== "hierarchy" && selection.length > 1 && <span className="muted small">{selection.length} selected</span>}
       </div>
-      <div className="elements-body" ref={bodyRef} onScroll={(e) => setView({ top: e.currentTarget.scrollTop, height: e.currentTarget.clientHeight })}>
+      <div
+        className="elements-body"
+        ref={bodyRef}
+        onScroll={(e) => setView({ top: e.currentTarget.scrollTop, height: e.currentTarget.clientHeight })}
+        onFocusCapture={(e) => {
+          if (!frozen && (e.target as HTMLElement).tagName === "INPUT") setFrozen(ordered);
+        }}
+        onBlurCapture={(e) => {
+          if (frozen && !e.currentTarget.contains(e.relatedTarget as Node | null)) setFrozen(null);
+        }}
+      >
         {kind === "places" && (
           <table className={`grid-table${windowed ? " windowed" : ""}`}>
             <thead>

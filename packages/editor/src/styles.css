@@ -3772,18 +3772,17 @@ body {
   transform: translateX(-50%);
   z-index: 6;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: center;
-  max-width: min(680px, calc(100% - 24px));
-  padding: 7px 12px;
+  flex-direction: column;
+  gap: 6px;
+  width: min(560px, calc(100% - 24px));
+  padding: 8px 10px 8px 12px;
   border-radius: 8px;
   border: 1px solid var(--trail);
   background: var(--panel);
   color: var(--ink);
   box-shadow: var(--shadow);
   font-size: 13px;
+  line-height: 1.4;
 }
 
 .deadlock-banner strong {
@@ -3792,6 +3791,132 @@ body {
 
 .deadlock-banner button {
   font-size: 12px;
+}
+
+.deadlock-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.deadlock-text {
+  flex: 1;
+}
+
+.deadlock-close {
+  margin: -2px -4px 0 0;
+}
+
+.deadlock-actions {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Stuck-token navigator: ‹ [place · tokens · n/N] › List */
+.stuck-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.deadlock-banner .stuck-arrow {
+  min-width: 28px;
+  font-size: 16px;
+  line-height: 1;
+  padding-top: 2px;
+  padding-bottom: 4px;
+}
+
+.stuck-nav button.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.stuck-current {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  max-width: 300px;
+}
+
+.stuck-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stuck-tokens {
+  color: var(--trail);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
+/* Why the transitions fed by the current place can't fire. */
+.stuck-why {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.stuck-why b {
+  color: var(--ink);
+}
+
+.stuck-list-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.stuck-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  max-height: min(200px, 28vh);
+  overflow-y: auto;
+}
+
+.stuck-list button {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.stuck-list button:hover,
+.stuck-list button:focus-visible {
+  background: var(--accent-soft);
+}
+
+.stuck-list button.current {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.stuck-waits {
+  flex-basis: 100%;
 }
 
 /* On phones the token game bar wraps onto several rows, so the banner sits at the bottom instead. */
@@ -3985,10 +4110,9 @@ body {
 }
 .docs-page blockquote {
   margin: 10px 0;
-  padding: 4px 14px;
-  border-left: 3px solid var(--accent);
+  padding: 6px 14px;
   background: var(--accent-soft);
-  border-radius: 0 6px 6px 0;
+  border-radius: 6px;
 }
 .docs-page ul,
 .docs-page ol {
@@ -4246,9 +4370,9 @@ body {
 .fw-inputs {
   margin: 6px 0 0;
 }
+/* The verdict's colour (yes, no, unknown) is the whole border's, not a side stripe. */
 .fw-outcome {
   border: 1px solid var(--border);
-  border-left-width: 4px;
   border-radius: 6px;
   padding: 6px 10px;
   margin: 8px 0;
