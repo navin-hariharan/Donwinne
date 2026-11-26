@@ -133,6 +133,10 @@ export interface StructuralProperties {
   outputPlaces: Check;
   /** Places or transitions without any arc. */
   isolatedNodes: Check;
+  /** DC (the report's §4.2.5): some directed path returns to its start. Witnesses: one circuit's strongly connected component. */
+  directedCircuits: Check;
+  /** PDC (§4.2.7): a directed circuit whose places and transitions all have exactly one input and one output. */
+  pureDirectedCircuits: Check;
 }
 
 export interface PlaceSet {
@@ -227,6 +231,138 @@ export interface BehaviourResult {
   };
 }
 
+/** Liveness of one transition at the levels of Murata (1989) and the report's §5.2.1.3. */
+export interface TransitionLiveness {
+  transition: NodeRef;
+  /**
+   * L1..L4: levels[0] = L1 (can fire at least once), levels[1] = L2 (can fire k times for every k),
+   * levels[2] = L3 (appears infinitely often in some infinite firing sequence), levels[3] = L4 (live).
+   */
+  levels: [Status, Status, Status, Status];
+  /** The exact level k (Lk holds and L(k+1) does not; 0 = dead), or null when not decided. */
+  level: 0 | 1 | 2 | 3 | 4 | null;
+  /** The highest level proven (0 when not even L1 is proven). */
+  atLeast: 0 | 1 | 2 | 3 | 4;
+}
+
+/** Synchronic distance d(a, b) = max |#a(σ) − #b(σ)| over firing sequences σ from reachable markings. */
+export interface SynchronicPair {
+  /** Indices into AnalysisReport.transitions. */
+  a: number;
+  b: number;
+  /**
+   * The distance when finite and known: exact, or (exact false) a lower bound from the explored part
+   * of the state space. Null when infinite, or when the coverability graph cannot decide it.
+   */
+  value: number | null;
+  infinite: boolean;
+  /** value (or infinite) is proven. */
+  exact: boolean;
+}
+
+/**
+ * Behavioural properties beyond the basic ones, from the complete reachability graph or, for
+ * unbounded nets, the Karp–Miller coverability graph (the report's §5.2.1, Murata 1989 §4).
+ */
+export interface DynamicsResult {
+  /**
+   * What decided the results: the complete reachability graph, the coverability graph (unbounded
+   * nets), only the explored part of the state space with theorems ("partial"), or nothing ("skipped").
+   */
+  source: "reachability" | "coverability" | "partial" | "skipped";
+  /** Liveness level of each transition (same order as AnalysisReport.transitions). */
+  transitions: TransitionLiveness[];
+  /** The net is Lk-live (every transition is), k = 1..4: net[0] = L1, …, net[3] = L4 (= live). */
+  netLevels: [Status, Status, Status, Status];
+  /** Some firing sequence contains every transition infinitely often. */
+  repetitive: Status;
+  /** Some infinite firing sequence exists (some transition occurs infinitely often). */
+  partiallyRepetitive: Status;
+  /** Some reachable marking is reproduced by a firing sequence containing every transition. */
+  consistent: Status;
+  /** Some reachable marking is reproduced by a non-empty firing sequence. */
+  partiallyConsistent: Status;
+  /** A positive weighting w exists with wᵀM = wᵀM0 for every reachable marking M. */
+  conservative: Status;
+  /** Such a weighting (per place id, smallest integers), when found. */
+  conservationWeights: Record<string, number> | null;
+  /** The plain token sum never changes. */
+  strictlyConservative: Status;
+  /** Persistent (report §5.2.1.7): an enabled transition is disabled only by its own firing. The same as DCF. */
+  persistent: Status;
+  /** Every pair of transitions is in a B-fair relation (bounded fairness). */
+  bFair: Status;
+  /** Classes of the B-fair relation (an equivalence relation), when every pair is decided. */
+  bFairClasses: NodeRef[][] | null;
+  /** A pair that is not B-fair: the first can fire arbitrarily often while the second does not fire. */
+  unfairPair?: [NodeRef, NodeRef];
+  /** Every infinite firing sequence contains every transition infinitely often. */
+  unconditionallyFair: Status;
+  /** Synchronic distances of all pairs (a < b), when within the limits; see `synchronicNote`. */
+  synchronic: SynchronicPair[];
+  synchronicNote: string;
+}
+
+/** Matrix-based (structural) properties of the report's §5.2.2, decided exactly over the rationals. */
+export interface StructuralAnalysis {
+  /** Rank r of the incidence matrix; rankExact false: computed modulo primes (very large matrices). */
+  rank: number;
+  rankExact: boolean;
+  /** n − r: dimension of the space of rational P-invariants (yᵀC = 0). */
+  pInvariantDimension: number;
+  /** m − r: dimension of the space of rational T-invariants (C·x = 0). */
+  tInvariantDimension: number;
+  /** Bounded for every initial marking: ∃ y > 0 with yᵀC ≤ 0. */
+  structurallyBounded: Status;
+  /** Places that some initial marking makes unbounded (∄ y ≥ 0 with y(p) > 0, yᵀC ≤ 0). */
+  structurallyUnboundedPlaces: NodeRef[];
+  /** y > 0 with yᵀC ≤ 0, per place id, when structurally bounded. */
+  boundednessWitness: Record<string, number> | null;
+  /** ∃ y > 0 with yᵀC = 0 (the same as CPI). */
+  structurallyConservative: Status;
+  /** ∃ y ≥ 0, y ≠ 0 with yᵀC = 0 (a P-invariant net). */
+  partiallyStructurallyConservative: Status;
+  /** ∃ x > 0 with C·x ≥ 0. */
+  structurallyRepetitive: Status;
+  /** ∃ x ≥ 0, x ≠ 0 with C·x ≥ 0. */
+  partiallyStructurallyRepetitive: Status;
+  /** Transitions in no x ≥ 0 with C·x ≥ 0 (none can fire infinitely often from any marking). */
+  nonRepetitiveTransitions: NodeRef[];
+  /** ∃ x > 0 with C·x = 0 (the same as CTI). */
+  structurallyConsistent: Status;
+  /** ∃ x ≥ 0, x ≠ 0 with C·x = 0 (a T-invariant net). */
+  partiallyStructurallyConsistent: Status;
+  /** Some initial marking makes the net live. */
+  structurallyLive: Status;
+  /** rank(C) = number of places, the report's necessary condition for complete controllability. */
+  controllabilityRank: Status;
+  /** Every marking can be reached from every marking. */
+  completelyControllable: Status;
+  /** B-fair for every initial marking. */
+  structurallyBFair: Status;
+  /** Classes of the structural B-fair relation, when decided. */
+  structuralBFairClasses: NodeRef[][] | null;
+}
+
+/** Answer of {@link checkReachability}: is a marking reachable from the initial one? */
+export interface ReachabilityCheck {
+  /** The exact answer when the state space was explored completely (or the marking was found). */
+  reachable: Status;
+  /** Shortest firing sequence to the marking, when it was found. */
+  path?: NodeRef[];
+  /**
+   * The state equation M = M0 + C·x, x ≥ 0 (a necessary condition): "none" proves the marking
+   * unreachable; "integer" gives a firing count vector (inconclusive: the marking may still be
+   * unreachable); "rational" has only a fractional solution; "unknown" at the limits; "n/a" when
+   * the equation does not hold for the net (reset arcs, marking-dependent weights, modulo nets).
+   */
+  stateEquation: "none" | "integer" | "rational" | "unknown" | "n/a";
+  /** A firing count vector solving the state equation (transition id → count). */
+  firingCount?: Record<string, number>;
+  /** One plain-English paragraph. */
+  explanation: string;
+}
+
 export type SummaryGroup = "structure" | "invariants" | "siphons" | "behaviour";
 
 export interface SummaryItem {
@@ -267,6 +403,10 @@ export interface AnalysisReport {
   structure: StructuralProperties;
   siphonsTraps: SiphonTrapResult;
   behaviour: BehaviourResult;
+  /** Liveness levels, repetitivity, consistency, conservation, fairness and synchronic distances. */
+  dynamics: DynamicsResult;
+  /** Structural boundedness, repetitivity, consistency, conservation, liveness, controllability, B-fairness. */
+  algebra: StructuralAnalysis;
   summary: SummaryItem[];
 }
 

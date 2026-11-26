@@ -1,7 +1,7 @@
 // Tidy top-down layout of fault trees.
 
-import { FTNode, Net } from "@pns/core";
-import { treeOf } from "./structure";
+import { Net } from "@pns/core";
+import { orderedInputs, treeOf } from "./structure";
 
 /** Options for {@link layoutFaultTree}. */
 export interface LayoutOptions {
@@ -44,6 +44,7 @@ export function layoutFaultTree(net: Net, opts: LayoutOptions = {}): Net {
   ];
   const pos = new Map<string, { x: number; y: number }>();
   const placed = new Set<string>();
+  const spanKids = new Map<string, string[]>();
   let column = 0;
   const place = (rootId: string) => {
     // Iterative post-order over a spanning tree (first parent wins).
@@ -52,6 +53,7 @@ export function layoutFaultTree(net: Net, opts: LayoutOptions = {}): Net {
       placed.add(id);
       const kids = (children.get(id) ?? []).filter((c) => !placed.has(c));
       kids.forEach((c) => placed.add(c));
+      spanKids.set(id, kids);
       stack.push({ id, depth, kids, i: 0 });
     };
     push(rootId, 0);
@@ -73,6 +75,42 @@ export function layoutFaultTree(net: Net, opts: LayoutOptions = {}): Net {
     }
   };
   for (const r of roots) if (!placed.has(r.id)) place(r.id);
-  const out: FTNode[] = nodes.map((n) => ({ ...n, ...pos.get(n.id)! }));
-  return { ...net, faultTree: { nodes: out, edges: edges.map(({ points: _p, ...e }) => e) } };
+
+  // The inputs of PAND, SPARE and FDEP gates are read from left to right, so the layout must not
+  // change their order. A shared input is placed under its first parent, which can move it to
+  // the other side of a sibling; swap such inputs' columns back (with their subtrees).
+  const edgeList = edges.map(({ points: _p, ...e }) => e);
+  const make = (): Net => ({ ...net, faultTree: { nodes: nodes.map((n) => ({ ...n, ...pos.get(n.id)! })), edges: edgeList } });
+  const ordered = nodes.filter((n) => n.type === "pand" || n.type === "spare" || n.type === "fdep");
+  if (!ordered.length) return make();
+  const wanted = new Map(ordered.map((g) => [g.id, orderedInputs(net, g.id)]));
+  const shift = (id: string, dxs: number, seen = new Set<string>()) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    const p = pos.get(id)!;
+    pos.set(id, { x: p.x + dxs, y: p.y });
+    for (const k of spanKids.get(id) ?? []) shift(k, dxs, seen);
+  };
+  for (let pass = 0; pass < 2 * ordered.length + 2; pass++) {
+    const laid = make();
+    const bad = ordered.find((g) => orderedInputs(laid, g.id).join("\u0000") !== wanted.get(g.id)!.join("\u0000"));
+    if (!bad) return laid;
+    const ins = wanted.get(bad.id)!;
+    const xs = ins.map((i) => pos.get(i)!.x).sort((a, b) => a - b);
+    // Equal x would fall back to edge order; spread them so the order is explicit.
+    for (let i = 1; i < xs.length; i++) if (xs[i] <= xs[i - 1]) xs[i] = xs[i - 1] + dx / 2;
+    const deltas = ins.map((id, i) => xs[i] - pos.get(id)!.x);
+    ins.forEach((id, i) => deltas[i] && shift(id, deltas[i]));
+  }
+  // The constraints could not all be met by moving subtrees: keep the input order by placing the
+  // inputs of order-sensitive gates exactly in their original left-to-right order.
+  for (const g of ordered) {
+    const ins = wanted.get(g.id)!;
+    const x0g = Math.min(...ins.map((i) => pos.get(i)!.x));
+    ins.forEach((id, i) => pos.set(id, { x: x0g + i * dx, y: pos.get(id)!.y }));
+  }
+  const laid = make();
+  return ordered.every((g) => orderedInputs(laid, g.id).join("\u0000") === wanted.get(g.id)!.join("\u0000"))
+    ? laid
+    : { ...net, faultTree: { nodes: nodes.map((n) => ({ ...n })), edges: edgeList } };
 }

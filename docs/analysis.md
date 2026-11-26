@@ -12,6 +12,10 @@ For model checking temporal logic formulas, see [CTL model checking](ctl.md). Fo
   - [Behavioural properties](#behavioural-properties)
   - [Invariants](#invariants)
   - [Siphons and traps](#siphons-and-traps)
+  - [Liveness levels and fairness](#liveness-levels-and-fairness)
+  - [Matrix-based structural properties](#matrix-based-structural-properties)
+  - [Is a marking reachable?](#is-a-marking-reachable)
+  - [Reversed and dual nets](#reversed-and-dual-nets)
   - [Structural properties](#structural-properties)
   - [Incidence matrix](#incidence-matrix)
   - [Show: highlighting results](#show-highlighting-results)
@@ -139,6 +143,93 @@ A **siphon** is a set of places such that every transition that puts tokens into
 
 The **Siphons and traps** tab lists the minimal siphons and minimal traps (click one to highlight it). They are enumerated by a branching search over the places, with limits on the search size and at most 5,000 sets of each kind. The siphon-trap property (every minimal siphon contains an initially marked trap) is the key to the deadlock and liveness theorems above.
 
+### Liveness levels and fairness
+
+The **Liveness and fairness** tab goes beyond "live or not", after Murata (1989) and the classic
+textbook analyses (A. Halder, *A Study of Petri Nets*, 2006, §5.2.1). Each transition gets its
+**liveness level**:
+
+| Level | Meaning |
+| --- | --- |
+| L0 (dead) | It can never fire. |
+| L1 | It can fire at least once. |
+| L2 | It can fire k times, for every k. |
+| L3 | It occurs infinitely often in some firing sequence. |
+| L4 (live) | From every reachable marking it can fire again. |
+
+Each level implies the ones below it. On a bounded net L2 and L3 are the same (a transition that can
+fire arbitrarily often lies on a cycle); on an unbounded net they can differ: a transition that
+empties a place filled by a pump that can be switched off fires as often as you like, but never
+forever. The **Properties** tab adds the net's levels (L1-, L2-, L3-live; L4-live is **Live**) and:
+
+| Property | Meaning |
+| --- | --- |
+| Persistent | An enabled transition is only disabled by firing it. The same as dynamic conflict freeness (DCF). |
+| Repetitive / partially repetitive | Some firing sequence fires every transition (some transition) infinitely often. |
+| Consistent / partially consistent (behavioural) | Some reachable marking comes back after a firing sequence through every transition (a non-empty one). |
+| Conservative / strictly conservative (behavioural) | A positively weighted token sum (the plain token count) is the same in every reachable marking. The weights are given. |
+| B-fair | No transition can fire arbitrarily often while another one does not fire at all. When the bounded-fair relation is an equivalence, its classes are listed. |
+| Unconditionally fair | Every infinite firing sequence fires every transition infinitely often. |
+
+The **synchronic distance** of two transitions is the most their numbers of firings can drift
+apart, over every firing sequence from every reachable marking: 1 for the two transitions of a
+cycle with one token, ∞ for two independent loops. The tab lists it for every pair (up to 40
+transitions).
+
+What decides these answers is shown at the top of the tab:
+
+- **The complete reachability graph** (bounded nets): every answer is exact.
+- **The Karp–Miller coverability graph** (unbounded nets with normal and read arcs). Every firing
+  sequence is a path in it, and its cycles can be repeated as often as wanted from a marking with
+  enough tokens. Whether a cycle can repeat *forever* (L3, repetitive, unconditional fairness) is a
+  small exact linear program over the cycles of the graph. Finite synchronic distances stay
+  undecided there; infinite ones are proven.
+- **The explored part of the state space** (too large to finish): a firing or a cycle seen is
+  proven, everything else is Unknown.
+
+### Matrix-based structural properties
+
+These hold for every initial marking and depend only on the incidence matrix $C$ (Murata 1989, §VI;
+Halder 2006, §5.2.2). Each is decided exactly, with whole-number arithmetic, by a linear program; they
+appear on the **Properties** tab with the invariants:
+
+| Property | Condition |
+| --- | --- |
+| Structurally bounded | some $y > 0$ has $y^T C \le 0$. When not, the places some marking makes unbounded are shown. |
+| Structurally conservative | some $y > 0$ has $y^T C = 0$ (partially: some $y \ge 0$, $y \ne 0$). |
+| Structurally repetitive | some $x > 0$ has $C x \ge 0$. Transitions in no such $x$ can fire only finitely often from any marking. |
+| Structurally consistent | some $x > 0$ has $C x = 0$ (partially: some $x \ge 0$, $x \ne 0$). |
+| Structurally live | some marking makes the net live. No when a weighted token sum that never grows is lowered by some transition; for free-choice nets decided by Commoner's theorem (every minimal siphon contains a trap). |
+| Rank condition for controllability | rank $C$ = number of places, needed for complete controllability. The rank and the dimensions of the P- and T-invariant spaces are given. |
+| Completely controllable | every marking can be reached from every other. No when the rank is too small or nothing can fire from the empty marking. |
+| Structurally B-fair | B-fair for every initial marking: no $x \ge 0$ with $C x \ge 0$ fires one transition and not another. |
+
+These theorems are for place/transition nets. Read arcs change nothing. Inhibitor and equal arcs
+and capacities only take behaviour away, so an answer that says "this cannot happen" stays proven and
+one that says "this can happen" becomes Unknown. With reset arcs or marking-dependent weights the
+matrix does not describe the firing rule, and the answers are n/a.
+
+### Is a marking reachable?
+
+The **Reachability** tab answers it for a marking you type, one place per line as `name = tokens`
+(places left out are empty). It first solves the **state equation** $M = M_0 + C x$, $x \ge 0$, a
+necessary condition: no solution, or only fractional ones, proves the marking unreachable without
+exploring anything. Otherwise it searches the state space and gives the shortest firing sequence to
+the marking. A whole-number solution of the state equation alone proves nothing: in a net whose only
+transition needs a token that never comes, the equation still allows firing it once.
+
+### Reversed and dual nets
+
+**Analyse > Open the reversed net** opens a copy of the net with every arc pointing the other way
+(the inverse net $N^{-1}$, with $I^{-1} = O$ and $O^{-1} = I$); places, transitions and the marking
+stay, and read arcs, which only test a place, stay as they are. Its incidence matrix is $-C$, so it
+has the same P- and T-invariants. Inhibitor, reset, equal and modifier arcs have no reverse.
+
+**Analyse > Open the dual net** (place/transition nets) swaps places and transitions and reverses
+every arc ($\hat P = T$, $\hat T = P$, $\hat I = O$, $\hat O = I$). The dual of an unmarked net is an
+unmarked net, so the dual has no tokens. It needs normal arcs of constant weight, and no subnets or
+logical places. Taking the dual or the reverse twice gives the original net back.
+
 ### Structural properties
 
 The **Structure** tab lists properties that depend only on the graph of the net, with the elements that witness each answer:
@@ -162,6 +253,8 @@ The **Structure** tab lists properties that depend only on the graph of the net,
 | Has input places (FP0) | Some place has no input transitions. |
 | Has output places (PF0) | Some place has no output transitions. |
 | Has isolated nodes | Some place or transition has no arcs. |
+| Has directed circuits (DC) | Some directed path of arcs returns to where it started. |
+| Has pure directed circuits (PDC) | Some directed circuit consists only of places and transitions with one input and one output. |
 
 ### Incidence matrix
 

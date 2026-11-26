@@ -138,6 +138,20 @@ describe("Fig. 4.9: forward composition (Def. 8)", () => {
     expect(r.ok).toBe(false);
     expect(r.reason).toMatch(/colour sets differ/);
   });
+
+  it("Defs 8 and 12 compare K(g, c) and C(g) as the APN reads them: no capacity means K = 1, and colour sets by their colours (regression)", () => {
+    // A user-drawn N whose gluing place has no explicit capacity (K = 1 by Sec. 3.2).
+    const n = fig43N();
+    for (const p of n.places) delete p.capacity;
+    expect(checkForwardComposition(n, "p2", basicStepNet({}))).toMatchObject({ ok: true });
+    expect(checkForwardComposition(n, "p2", basicStepNet({ capacity: 2 })).reason).toMatch(/capacities per colour differ \(1 and 2\)/);
+    // The same colours under another name glue (C(g) = C_S(p_s) is a set equality).
+    const renamed = basicStepNet({ colourSet: { name: "Users", type: "enum", values: ["w", "b"] }, variable: "u" });
+    expect(checkForwardComposition(fig43N(), "p2", renamed)).toMatchObject({ ok: true });
+    noErrors(forwardCompose(fig43N(), "p2", renamed));
+    const one = oneStepNet({ capacity: 2 });
+    expect(checkBackwardComposition(fig410(), "p1", "p2", one).reason).toMatch(/capacities per colour differ/);
+  });
 });
 
 describe("Fig. 4.10: the bidirectional step (Def. 12)", () => {

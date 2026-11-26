@@ -169,6 +169,25 @@ export class Bdd {
   }
 
   /**
+   * The monotone closure f⁺(x) = ∃y ≤ x: f(y), the smallest coherent function above f.
+   * For ite(v, h, l) it is ite(v, (h ∨ l)⁺, l⁺). Coherent functions are their own closure.
+   */
+  monotone(f: number): number {
+    const memo = new Map<number, number>();
+    const rec = (x: number): number => {
+      if (x <= 1) return x;
+      let r = memo.get(x);
+      if (r === undefined) {
+        const lo = this.los[x];
+        r = this.mk(this.vars[x], rec(lo), rec(this.or(this.his[x], lo)));
+        memo.set(x, r);
+      }
+      return r;
+    };
+    return rec(f);
+  }
+
+  /**
    * Minimal solutions (prime implicants of the monotone closure) as a ZDD, using Rauzy's
    * algorithm. For non-coherent functions this is the coherent approximation: negated
    * literals are dropped. Only solutions with at most `maxOrder` variables are kept.

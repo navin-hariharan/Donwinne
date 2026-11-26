@@ -110,9 +110,11 @@ export interface Names {
   transitions: Transition[];
 }
 
-export function assignNames(net: Net, prefix = { place: "P", transition: "T" }): Names {
+export function assignNames(net: Net, prefix = { place: "P", transition: "T" }, reserved?: ReadonlySet<string>): Names {
   const used = new Set<string>();
-  const unique = (base: string) => {
+  const unique = (raw: string) => {
+    // Format-specific keywords (e.g. PRISM's single-letter property operators) get an underscore.
+    const base = reserved?.has(raw) ? `${raw}_` : raw;
     let s = base;
     for (let i = 2; used.has(s); i++) s = `${base}_${i}`;
     used.add(s);

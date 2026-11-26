@@ -40,8 +40,8 @@ export function structurallyFaithful(pt: PTNet): boolean {
   return !pt.modulus && pt.capacity.every((c) => c === undefined) && pt.arcs.every((a) => (a.kind === "normal" || a.kind === "read") && a.weight !== null);
 }
 
-/** P-invariants remain valid (only restricting arcs besides normal ones, constant weights). */
-function invariantsHold(pt: PTNet): boolean {
+/** P-invariants and the state equation remain valid (only restricting arcs besides normal ones, constant weights). */
+export function invariantsHold(pt: PTNet): boolean {
   return !pt.modulus && pt.arcs.every((a) => a.kind !== "reset" && a.weight !== null);
 }
 
@@ -51,7 +51,11 @@ function markingRecord(pt: PTNet, M: ArrayLike<number>): Record<string, number> 
   return r;
 }
 
-export function analyseBehaviour(pt: PTNet, opts: BehaviourOptions = {}, ctx: BehaviourContext = {}): { result: BehaviourResult; notes: BehaviourNotes } {
+export function analyseBehaviour(
+  pt: PTNet,
+  opts: BehaviourOptions = {},
+  ctx: BehaviourContext = {},
+): { result: BehaviourResult; notes: BehaviourNotes; /** The explored state space (absent when skipped). */ space?: StateSpace } {
   const maxStates = opts.maxStates ?? 100_000;
   const P = pt.places;
   const T = pt.transitions;
@@ -365,6 +369,7 @@ export function analyseBehaviour(pt: PTNet, opts: BehaviourOptions = {}, ctx: Be
       dynamicConflictFree: dcfNote,
       highlight,
     },
+    space: ss,
   };
 }
 

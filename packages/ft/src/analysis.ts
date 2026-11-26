@@ -102,11 +102,14 @@ export function minimalCutSets(net: Net | CompiledFaultTree, opts: CutSetOptions
 
 /**
  * Minimal path sets: minimal sets of basic events whose all working guarantees that the top
- * event does not occur (the minimal cut sets of the dual function).
+ * event does not occur, whatever the other events do (the minimal cut sets of the dual of the
+ * monotone closure; for coherent trees simply of the dual function).
  */
 export function minimalPathSets(net: Net | CompiledFaultTree, opts: CutSetOptions = {}): string[][] {
   const c = "bdd" in net ? net : compileFaultTree(net);
-  return solutions(c, c.bdd.dual(c.root), opts);
+  // A non-coherent top event must not be dualised directly: for A ∧ ¬B the dual A ∨ ¬B is true
+  // with every event working, which would give the empty path set although {A} is needed.
+  return solutions(c, c.bdd.dual(c.bdd.monotone(c.root)), opts);
 }
 
 /** Options for probability analyses. */

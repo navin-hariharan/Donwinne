@@ -283,6 +283,7 @@ describe("APNN", () => {
 });
 
 describe("PRISM", () => {
+  // A, C and E are PRISM keywords and get an underscore; mass action includes the read arc from E.
   it("writes a CTMC with bounded places and mass-action rates", () => {
     expect(exportPrism(reaction())).toBe(`ctmc
 
@@ -291,11 +292,11 @@ const double k = 0.5;
 const int N = 3;
 
 module reaction
-  A : [0..Max] init 3;
+  A_ : [0..Max] init 3;
   B : [0..Max] init 4;
-  C : [0..Max] init 0;
-  E : [0..Max] init 1;
-  [r1] (A >= 1) & (B >= 2) & (E >= 1) & (C <= Max - 1) -> (k) * A * (B * (B - 1) / 2) : (A' = A - 1) & (B' = B - 2) & (C' = C + 1);
+  C_ : [0..Max] init 0;
+  E_ : [0..Max] init 1;
+  [r1] (A_ >= 1) & (B >= 2) & (E_ >= 1) & (C_ <= Max - 1) -> (k) * A_ * (B * (B - 1) / 2) * E_ : (A_' = A_ - 1) & (B' = B - 2) & (C_' = C_ + 1);
 endmodule
 `);
   });
@@ -308,10 +309,10 @@ endmodule
     net.transitions[0].rate = "k * pow(A, 2) + N^2";
     const text = exportPrism(net, { bound: 10 });
     expect(text).toContain("const int Max = 10;");
-    expect(text).toContain("C : [0..4] init 0;");
-    expect(text).toContain("(C < 3)");
-    expect(text).toContain("(A' = 0)");
-    expect(text).toContain("-> k * pow(A, 2) + pow(N, 2) :");
+    expect(text).toContain("C_ : [0..4] init 0;");
+    expect(text).toContain("(C_ < 3)");
+    expect(text).toContain("(A_' = 0)");
+    expect(text).toContain("-> k * pow(A_, 2) + pow(N, 2) :");
   });
 
   it("refuses non-stochastic classes and kinds", () => {
@@ -337,7 +338,7 @@ describe("SBML", () => {
     expect(xml).toContain('<speciesReference species="B" stoichiometry="2"/>');
     expect(xml).toContain('<modifierSpeciesReference species="E"/>');
     expect(xml.replace(/\s+/g, "")).toContain(
-      "<mathxmlns=\"http://www.w3.org/1998/Math/MathML\"><apply><times/><ci>k</ci><ci>A</ci><apply><power/><ci>B</ci><cn>2</cn></apply></apply></math>",
+      "<mathxmlns=\"http://www.w3.org/1998/Math/MathML\"><apply><times/><ci>k</ci><ci>A</ci><apply><power/><ci>B</ci><cn>2</cn></apply><ci>E</ci></apply></math>",
     );
   });
 

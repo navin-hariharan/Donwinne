@@ -44,6 +44,8 @@ export type MenuCommand =
   | "reachability"
   | "simulate"
   | "unfold"
+  | "reverse"
+  | "dual"
   | "analyse"
   | "elements"
   | "new-apn"
@@ -59,6 +61,20 @@ export type MenuCommand =
   | "ambient:compose"
   | `export:${string}`;
 
+/**
+ * Where the desktop app's updater is. In automatic mode (the default) updates download quietly and
+ * install when the app restarts; in "ask" mode the person chooses whether to download each one.
+ */
+export type UpdateStatus =
+  | { state: "idle" }
+  | { state: "available"; version: string }
+  | { state: "downloading"; version: string; percent: number; quiet: boolean }
+  | { state: "ready"; version: string }
+  | { state: "error"; message: string };
+
+/** What the person chose in the update banner. */
+export type UpdateAction = "download" | "restart" | "later" | "open-page";
+
 export interface DesktopBridge {
   /** Show an open dialog and read the chosen file as UTF-8 text. Null if cancelled. */
   openFile(filters: FileFilter[]): Promise<OpenedFile | null>;
@@ -73,6 +89,10 @@ export interface DesktopBridge {
   setTitle(title: string): void;
   /** Files handed over by the OS (command line, double-click, macOS open-file). */
   onOpenPath?(cb: (file: OpenedFile) => void): () => void;
+  /** Follow the app updater (the current status arrives right after subscribing). */
+  onUpdate?(cb: (status: UpdateStatus) => void): () => void;
+  /** Answer the update banner. */
+  updateAction?(action: UpdateAction): void;
 }
 
 declare global {

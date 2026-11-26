@@ -17,7 +17,7 @@
 //   thesis does not define that operator; parallelCompose is the disjoint union, and the class checks
 //   accept several roots only when asked to (option `severalRoots`).
 
-import { Arc, ColourSetDecl, Net, Place, Point, compile } from "@pns/core";
+import { Arc, ColourSetDecl, Net, Place, Point, ambientCapacity, compile, valueKey } from "@pns/core";
 import { ApnStructure, StepRoles, analyseApn, controlPlacesOf, incidence, resolvePlace, setGluingFlag } from "./model-structure";
 import { awayFrom, bendArcs, controlSystemPositions, nodePoints, normalise, placeBackwardStep, placeControlSystem, placeForwardStep } from "./model-layout";
 
@@ -205,10 +205,33 @@ function addInhibitor(net: Net, place: string, transition: string): void {
   net.arcs.push({ id: freshArcId(net, "inh"), source: place, target: transition, kind: "inhibitor", inscription: modeOf(net, transition) });
 }
 
-function sameKind(a: Place, b: Place): string | null {
-  if ((a.colourSet ?? "Dot") !== (b.colourSet ?? "Dot")) return `colour sets differ (${a.colourSet} and ${b.colourSet})`;
-  if (a.capacity !== b.capacity) return `capacities differ (${a.capacity ?? "unbounded"} and ${b.capacity ?? "unbounded"})`;
+/**
+ * The gluing conditions of Defs 8 and 12: C(g) = C_S(p) as sets of colours, and K(g, c) = K_S(p, c)
+ * for every colour c. Colour sets are compared by their values, so two declarations with different
+ * names but the same colours glue; capacities are compared as APN capacities per colour, where a
+ * place without an explicit capacity has K = 1 (Sec. 3.2).
+ */
+function sameKind(na: Net, a: Place, nb: Net, b: Place): string | null {
+  const sa = a.colourSet ?? "Dot";
+  const sb = b.colourSet ?? "Dot";
+  if (sa !== sb) {
+    const da = domainKeys(na, sa);
+    const db = domainKeys(nb, sb);
+    if (!da || !db || da.length !== db.length || da.some((k) => !db.includes(k))) return `colour sets differ (${sa} and ${sb})`;
+  }
+  const ka = ambientCapacity(a.capacity, false);
+  const kb = ambientCapacity(b.capacity, false);
+  if (ka !== kb) return `capacities per colour differ (${ka} and ${kb})`;
   return null;
+}
+
+/** The colours of a colour set of a net, as value keys; undefined when the set is unknown. */
+function domainKeys(net: Net, set: string): string[] | undefined {
+  try {
+    return compile(net).colourSets.get(set)?.map(valueKey);
+  } catch {
+    return undefined;
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -244,7 +267,7 @@ export function checkForwardComposition(net: Net, gluing: string, step: Net): Ch
   try {
     const p = prepare(net, step);
     const g = requireGluing(p, gluing);
-    const diff = sameKind(g, step.places.find((x) => x.id === p.st.start)!);
+    const diff = sameKind(net, g, step, step.places.find((x) => x.id === p.st.start)!);
     if (diff) return { ok: false, reason: `C(g) = C_S(p_s) and K(g) = K_S(p_s) are required (Def. 8), but ${diff}` };
     mergeDeclarations(net, step);
     return { ok: true, reason: `Glue ${g.name} with the starting place of ${pname(step, p.st.transition)}` };
@@ -348,9 +371,9 @@ export function checkBackwardComposition(net: Net, g1: string, g2: string, step:
     const b = requireGluing(p, g2);
     const ps = step.places.find((x) => x.id === p.st.start)!;
     const pf = step.places.find((x) => x.id === p.st.finish)!;
-    const d1 = sameKind(a, ps);
+    const d1 = sameKind(net, a, step, ps);
     if (d1) return { ok: false, reason: `C(g1) = C_S(p_s) and K(g1) = K_S(p_s) are required (Def. 12), but ${d1}` };
-    const d2 = sameKind(b, pf);
+    const d2 = sameKind(net, b, step, pf);
     if (d2) return { ok: false, reason: `C(g2) = C_S(p_f) and K(g2) = K_S(p_f) are required (Def. 12), but ${d2}` };
     if (hasStep(p.sN, a.id, b.id))
       return { ok: false, reason: `There is already a step from ${a.name} to ${b.name}; no other backward composition can be applied on these gluing pairs (Sec. 4.3.2.1)` };

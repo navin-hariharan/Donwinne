@@ -443,6 +443,15 @@ export interface FormulaCriterion {
    * safety slicing preserves (Rakow's stutter-invariant safety properties and their negations).
    */
   safety: boolean;
+  /**
+   * The formula is built from state formulas with the boolean connectives, EF and AG only, nested
+   * freely (AG EF, EF AG, …). The closure slices (CTL*-X, APNSlicing, abstract, basic) keep the
+   * verdicts of exactly these without any fairness assumption: the transitions they drop never
+   * change a slice place, so a run of the net is a run of the slice with stuttering steps added, but
+   * the net may also stutter forever (fire only dropped transitions), which changes AF, EG, AU and EU
+   * (Rakow's CTL*-X result, and the survey's Table 3 for abstract slicing, assume weak fairness).
+   */
+  reachability: boolean;
 }
 
 /**
@@ -491,7 +500,25 @@ export function criterionFromCtl(formula: string | CtlFormula): FormulaCriterion
     }
   };
   walk(f);
-  return { places: [...places], transitions: [...transitions], usesNext, usesDeadlock, safety: isSafetyShape(f) };
+  return { places: [...places], transitions: [...transitions], usesNext, usesDeadlock, safety: isSafetyShape(f), reachability: isReachabilityShape(f) };
+}
+
+/** State formulas closed under the boolean connectives, AG and EF (see {@link FormulaCriterion.reachability}). */
+function isReachabilityShape(f: CtlFormula): boolean {
+  if (isState(f)) return true;
+  switch (f.kind) {
+    case "AG":
+    case "EF":
+    case "not":
+      return isReachabilityShape(f.arg);
+    case "and":
+    case "or":
+    case "implies":
+    case "iff":
+      return isReachabilityShape(f.left) && isReachabilityShape(f.right);
+    default:
+      return false;
+  }
 }
 
 function isState(f: CtlFormula): boolean {
@@ -615,7 +642,12 @@ function safety(s: SliceStructure, crit: { places: number[]; transitions: number
   return c;
 }
 
-/** Alg. 8, forward slicing from the initial marking (token flow, ignoring counts). */
+/**
+ * Alg. 8, forward slicing from the initial marking (token flow, ignoring counts). With `within`
+ * (Alg. 11, concerned slicing, and Alg. 10's fallback) only the transitions of that backward slice
+ * are followed and only its marked places start the flow, but, as in Alg. 11
+ * (P' ← {p ∈ P | m0(p) > 0} ∪ T'•), every output place of a kept transition joins the slice.
+ */
 function forward(s: SliceStructure, pt: PTNet, within?: Core): Core {
   const P = new WorkSet(s.nP);
   const T = new WorkSet(s.nT);
@@ -635,7 +667,7 @@ function forward(s: SliceStructure, pt: PTNet, within?: Core): Core {
     }
     if (enabled) T.add(t);
   }
-  for (const t of T.list) for (const p of s.outputs[t]) if (inScopeP(p)) P.add(p);
+  for (const t of T.list) for (const p of s.outputs[t]) P.add(p);
   // Tdo ← {t ∉ T | •t ⊆ P} until empty. Each transition waits for its missing input places.
   const missing = new Int32Array(s.nT);
   const waiting: number[][] = Array.from({ length: s.nP }, () => []);
@@ -654,7 +686,7 @@ function forward(s: SliceStructure, pt: PTNet, within?: Core): Core {
   const fireNew = (t: number) => {
     if (!T.add(t)) return;
     for (const p of s.outputs[t]) {
-      if (!inScopeP(p) || !P.add(p)) continue;
+      if (!P.add(p)) continue;
       for (const u of waiting[p]) if (--missing[u] === 0) queue.push(u);
     }
   };
@@ -822,19 +854,21 @@ function draft(pt: PTNet, core: Core): Draft {
 }
 
 /**
- * Alg. 4, second loop: merge the pre and post place of every neutral transition t (one input arc
- * from p and one output arc to p', of the same weight, and p feeding nothing but t), moving p's
- * tokens and incoming arcs to p'. Criterion places and transitions are never merged. Extra
- * conditions keep the merge sound here: t has no other arcs, neither place has a capacity, p has
- * no reset, read, inhibitor or equal arcs, and p's tokens and incoming weights are multiples of t's weight.
+ * Alg. 4, second loop: merge the pre and post place of every neutral transition t (|•t| = |t•| = 1,
+ * λ(p, t) = λ(t, p'), |p•| = 1, p and p' not in the criterion), moving p's tokens and incoming
+ * arcs to p'. As in Alg. 4, •, • and |p•| are taken in the slice: a transition outside the slice
+ * that reads p (a reading transition the slice dropped) does not stop the merge. Criterion places
+ * and transitions are never merged. Extra conditions keep the merge sound for the arcs the
+ * algorithm was not written for: t has no other arcs, neither place has a capacity, p has no reset,
+ * read, inhibitor or equal arcs in the slice, p's tokens and incoming weights are multiples of t's
+ * weight, and p' is only tested monotonically in the slice. The merge makes p's tokens count on p'
+ * at once, before t fires; a transition of the slice with an inhibitor or equal arc on p' (or a
+ * reset arc, or a marking-dependent weight) could then be blocked or emptied earlier than in the
+ * net, so p' must have none.
  */
 function mergeNeutral(s: SliceStructure, pt: PTNet, d: Draft, crit: { places: number[]; transitions: number[] }, merges: SliceMerge[]): boolean {
   const critP = new Set(crit.places);
   const critT = new Set(crit.transitions);
-  const inT = new Set(d.transitions);
-  // p• in the whole net: a place read or consumed by a transition outside the slice is never merged.
-  const outsideReaders = new Set<number>();
-  for (const a of pt.arcs) if (a.dir === "in" && !inT.has(a.transition)) outsideReaders.add(a.place);
   const byT = new Map<number, PTArc[]>();
   const byP = new Map<number, PTArc[]>();
   const push = <K,>(m: Map<K, PTArc[]>, k: K, a: PTArc) => (m.get(k) ?? m.set(k, []).get(k)!).push(a);
@@ -859,11 +893,14 @@ function mergeNeutral(s: SliceStructure, pt: PTNet, d: Draft, crit: { places: nu
     const q = aout.place;
     const w = ain.weight;
     if (p === q || w === null || w <= 0 || aout.weight !== w) continue;
-    if (critP.has(p) || critP.has(q) || outsideReaders.has(p)) continue;
+    if (critP.has(p) || critP.has(q)) continue;
     if (s.capped[p] || s.capped[q] || pt.modulus) continue;
     const atP = byP.get(p) ?? [];
-    // |p•| = 1: t is the only transition reading or consuming p.
+    // |p•| = 1: t is the only transition of the slice reading or consuming p.
     if (atP.some((a) => a.dir === "in" && a !== ain)) continue;
+    // p' is only tested monotonically (normal and read arcs of constant weight) in the slice.
+    if ((byP.get(q) ?? []).some((a) => a.weight === null || (a.dir === "in" && a.kind !== "normal" && a.kind !== "read"))) continue;
+    if (s.variable.some((v, u) => v === 1 && byT.has(u))) continue;
     const incoming = atP.filter((a) => a.dir === "out");
     if (incoming.some((a) => a.weight === null || a.weight % w !== 0)) continue;
     const tokens = d.m0.get(p) ?? 0;

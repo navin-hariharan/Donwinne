@@ -1,11 +1,13 @@
 // Electron main process for Donwinne.
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, screen, session, shell, type IpcMainEvent, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type WebContents } from "electron";
-import { existsSync, promises as fs } from "node:fs";
+import { existsSync, mkdtempSync, promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { FileFilter, MenuCommand, OpenedFile } from "../../../packages/editor/src/platform";
 import { IPC, type NativeEditCommand } from "./ipc";
+import { automaticUpdates, checkForUpdates, handleUpdateAction, initUpdater, setAutomaticUpdates, updateStatus, updatesSupported } from "./updater";
 
 const APP_NAME = "Donwinne";
 const MODEL_EXT = ".pns.json";
@@ -13,6 +15,26 @@ const isMac = process.platform === "darwin";
 const devUrl = process.env.PNS_DEV_URL?.trim() || null;
 
 app.setName(APP_NAME);
+
+/**
+ * `--screenshot <file.png>`: start as usual, let the editor draw for about 120 frames, save the
+ * window's picture to that file and exit. The window is rendered off-screen, so it never appears,
+ * never takes focus and keeps drawing whatever else is on screen; a throwaway profile keeps the
+ * person's auto-saved work and settings untouched.
+ */
+function screenshotTarget(argv: string[]): string | null {
+  const i = argv.findIndex((a) => a === "--screenshot" || a.startsWith("--screenshot="));
+  if (i < 0) return null;
+  const a = argv[i]!;
+  const value = a.includes("=") ? a.slice(a.indexOf("=") + 1) : argv[i + 1];
+  return value && !value.startsWith("-") ? path.resolve(value) : null;
+}
+const screenshotPath = screenshotTarget(process.argv);
+if (process.argv.some((a) => a === "--screenshot" || a.startsWith("--screenshot=")) && !screenshotPath) {
+  console.error("Usage: --screenshot <file.png>");
+  process.exit(2);
+}
+if (screenshotPath) app.setPath("userData", mkdtempSync(path.join(os.tmpdir(), "donwinne-shot-")));
 
 let mainWindow: BrowserWindow | null = null;
 let quitting = false;
@@ -94,11 +116,14 @@ function createWindow(): BrowserWindow {
       sandbox: true,
       webSecurity: true,
       spellcheck: false,
+      // Screenshot mode draws off-screen at full speed: no window appears and nothing is throttled.
+      ...(screenshotPath ? { offscreen: true, backgroundThrottling: false } : {}),
     },
   });
   const id = win.webContents.id;
 
-  win.once("ready-to-show", () => win.show());
+  if (screenshotPath) captureAndQuit(win, screenshotPath);
+  else win.once("ready-to-show", () => win.show());
 
   // The renderer controls the title through setTitle; ignore <title> changes.
   win.on("page-title-updated", (e) => e.preventDefault());
@@ -164,6 +189,47 @@ function createWindow(): BrowserWindow {
     void win.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
   }
   return win;
+}
+
+/** Waits for the page to load and about 120 frames to be drawn, saves the picture, then quits. */
+function captureAndQuit(win: BrowserWindow, file: string): void {
+  const FRAMES = 120;
+  let frames = 0;
+  let done = false;
+  const finish = async (): Promise<void> => {
+    if (done || win.isDestroyed()) return;
+    done = true;
+    let code = 0;
+    try {
+      const image = await win.webContents.capturePage();
+      if (image.isEmpty()) throw new Error("the window drew nothing");
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, image.toPNG());
+      console.log(`Saved ${file} (${image.getSize().width}x${image.getSize().height})`);
+    } catch (err) {
+      console.error(`Could not save the screenshot: ${(err as Error).message}`);
+      code = 1;
+    }
+    forceClose.add(win);
+    app.exit(code);
+  };
+  win.webContents.setFrameRate(60);
+  win.webContents.once("did-finish-load", () => {
+    // Off-screen windows only paint when something changes, so a static page may stop short of
+    // 120 frames: give it at most 120 frames' worth of time at 60 fps plus a margin.
+    win.webContents.on("paint", () => {
+      if (++frames >= FRAMES) void finish();
+    });
+    win.webContents.invalidate();
+    setTimeout(() => void finish(), 3000);
+  });
+  // Never hang a check: give up after a minute.
+  setTimeout(() => {
+    if (!done) {
+      console.error("Could not save the screenshot: the page did not load in time");
+      app.exit(1);
+    }
+  }, 60_000);
 }
 
 function focusedWindow(): BrowserWindow | null {
@@ -277,6 +343,30 @@ function restrictPermissions(): void {
   session.defaultSession.setPermissionCheckHandler((wc, permission) => allowed.has(permission) && !!wc && isAppUrl(wc.getURL()));
 }
 
+/**
+ * Restart into the downloaded update. The installer starts as the app quits and can't wait for a
+ * save, so unsaved changes are confirmed first; cancelling keeps the update for the next quit.
+ */
+async function restartToUpdate(win: BrowserWindow | null): Promise<void> {
+  const windows = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
+  if (windows.some((w) => dirtyState.get(w.webContents.id))) {
+    const opts: Electron.MessageBoxOptions = {
+      type: "warning",
+      buttons: ["Discard Changes and Restart", "Cancel"],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+      title: APP_NAME,
+      message: "You have unsaved changes.",
+      detail: "Restarting to update will discard them. Cancel, save your work, then restart (or the update installs the next time you quit).",
+    };
+    const { response } = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts);
+    if (response !== 0) return;
+  }
+  for (const w of windows) forceClose.add(w);
+  handleUpdateAction("restart");
+}
+
 function registerIpc(): void {
   handle(IPC.openFile, async (e, filters: FileFilter[]): Promise<OpenedFile | null> => {
     const win = windowOf(e.sender);
@@ -334,6 +424,13 @@ function registerIpc(): void {
     else if (cmd === "redo") wc.redo();
     else if (cmd === "delete") wc.delete();
     else if (cmd === "selectAll") wc.selectAll();
+  });
+
+  handle(IPC.updateGet, () => updateStatus());
+
+  listen(IPC.updateAction, (e, action: unknown) => {
+    if (action === "restart") void restartToUpdate(windowOf(e.sender));
+    else if (action === "download" || action === "later" || action === "open-page") handleUpdateAction(action);
   });
 
   handle(IPC.takePendingOpen, async (e) => {
@@ -449,6 +546,8 @@ function buildMenu(): Menu {
       item("Slice the Net…", "slice"),
       { type: "separator" },
       item("Unfold to an Uncoloured Net", "unfold"),
+      item("Open the Reversed Net", "reverse"),
+      item("Open the Dual Net", "dual"),
       { type: "separator" },
       {
         label: "Ambient (Konios)",
@@ -475,7 +574,21 @@ function buildMenu(): Menu {
   template.push({
     role: "help",
     label: "&Help",
-    submenu: [item("Docs", "docs", "F1"), item("Quick Guide", "help"), { type: "separator" }, item(`About ${APP_NAME}`, "about")],
+    submenu: [
+      item("Docs", "docs", "F1"),
+      item("Quick Guide", "help"),
+      { type: "separator" },
+      { label: "Check for Updates…", click: () => void checkForUpdates(true) },
+      {
+        label: "Install Updates Automatically",
+        type: "checkbox",
+        checked: automaticUpdates(),
+        enabled: updatesSupported(),
+        click: (mi) => setAutomaticUpdates(mi.checked),
+      },
+      { type: "separator" },
+      item(`About ${APP_NAME}`, "about"),
+    ],
   });
 
   return Menu.buildFromTemplate(template);
@@ -490,7 +603,8 @@ app.on("open-file", (e, p) => {
   if (isModelPath(p)) requestOpen(p);
 });
 
-if (!app.requestSingleInstanceLock()) {
+// A screenshot run is its own short-lived instance, so it works even while the app is open.
+if (!screenshotPath && !app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", (_e, argv) => {
@@ -519,6 +633,14 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(() => {
     restrictPermissions();
     registerIpc();
+    // Before the menu, which shows the updater's settings.
+    initUpdater({
+      disabled: !!screenshotPath,
+      window: () => mainWindow,
+      send: (status) => {
+        for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.updateStatus, status);
+      },
+    });
     Menu.setApplicationMenu(buildMenu());
     mainWindow = createWindow();
 

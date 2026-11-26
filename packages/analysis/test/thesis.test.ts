@@ -405,7 +405,7 @@ describe("Thesis chapter 7, colour-blind T-APN (the thesis's reading)", () => {
     });
     expect(sizes).toEqual([
       [229, 1990, 1],
-      [314, 1620, 1],
+      [366, 1740, 1],
     ]);
     expect([THESIS_QUALITATIVE.garage.states, THESIS_QUALITATIVE.conference.states]).toEqual([52, 82]);
   });

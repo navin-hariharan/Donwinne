@@ -35,6 +35,7 @@ at the top of the Analyse menu, shown for APNs and T-APNs.
 | [Bindings](net-classes.md#guards-and-bindings) | The values of a coloured transition's variables in one firing; the token game asks when there are several. | Token game, **Choose a binding** | |
 | [Bottom panel](editor.md#the-bottom-panel) | Tabs for problems, elements, the token game, plots and fault tree analysis. Drag its edge to resize. | View > Bottom panel | B |
 | [Breadcrumbs](editor.md#subnets-and-breadcrumbs) | Show which subnet page you are on; click one to go there. | Top of the canvas inside a subnet | |
+| [B-fairness](analysis.md#liveness-levels-and-fairness) | Whether a transition can fire arbitrarily often while another does not, and the classes of transitions that keep pace. | Net properties, **Liveness and fairness** tab | |
 | [Building blocks](ambient-petri-nets.md#the-blocks-defs-6-7-11) | Creates unidirectional steps, basic step nets, root nets and one step nets of the thesis. | Analyse > Ambient > Building blocks…; File > New APN from building blocks… | |
 
 ## C
@@ -76,6 +77,7 @@ at the top of the Analyse menu, shown for APNs and T-APNs.
 | [DNF fault trees](file-formats.md#minimal-cut-sets-dnf) | Reads a fault tree from, or writes its minimal cut sets to, a Boolean formula. | File > Import…; File > Export as | |
 | [Docs](getting-started.md#using-these-docs) | These pages, searchable, inside the app. | Help > Docs | F1 |
 | [Drop a file](file-formats.md#opening-importing-and-saving) | Drag a model file onto the window to open it. | Anywhere | |
+| [Dual net](analysis.md#reversed-and-dual-nets) | Opens the net with places and transitions swapped and arcs reversed. | Analyse > Open the dual net | |
 
 ## E
 
@@ -147,6 +149,7 @@ at the top of the Analyse menu, shown for APNs and T-APNs.
 
 | Feature | What it does | Where | Key |
 | --- | --- | --- | --- |
+| [Liveness levels](analysis.md#liveness-levels-and-fairness) | L0 (dead) to L4 (live) for every transition, from the reachability or coverability graph. | Net properties, **Liveness and fairness** tab | |
 | [LaTeX (TikZ)](file-formats.md#pictures-svg-png-and-latex-tikz) | Exports the drawing as a TikZ picture. | File > Export as | |
 | [Lee's slices](slicing.md#lee-and-chang-slices-that-cover-the-whole-net) | Splits a net into slices built from its P-invariants. | Analyse > Slice the net… > Divide the net into parts | |
 | [Logical (fusion) places](net-classes.md#places-capacity-and-logical-places) | Places with the same name share one marking, for drawing one place in several spots. | Right-click > Make logical; properties panel | |
@@ -209,6 +212,8 @@ at the top of the Analyse menu, shown for APNs and T-APNs.
 | Feature | What it does | Where | Key |
 | --- | --- | --- | --- |
 | [Random firing and running](simulation.md#random-firing-and-running) | Fires a random enabled transition, or keeps firing at 1 to 30 firings a second. | Token game | R, Space |
+| [Reversed net](analysis.md#reversed-and-dual-nets) | Opens the net with every arc pointing the other way. | Analyse > Open the reversed net | |
+| [Reachability of a marking](analysis.md#is-a-marking-reachable) | Is a marking you type reachable? The state equation first, then the shortest firing sequence. | Net properties, **Reachability** tab | |
 | [Reachability graph](analysis.md#reachability-graph) | Every reachable marking, drawn or as a table; click a state to replay the way to it; export as SVG, PNG, DOT or CSV. | Analyse > Reachability graph… | |
 | [Read arc](net-classes.md#arc-types) | Needs the tokens but does not take them. | Arc type chooser | 2 |
 | [Reconnect an arc](editor.md#reshaping-arcs) | Drag an end of a selected arc onto another node. | Canvas | |
@@ -233,9 +238,11 @@ at the top of the Analyse menu, shown for APNs and T-APNs.
 | [Step token game](ambient-petri-nets.md#playing-the-step-token-game) | Fires steps of colour modes in APNs and T-APNs, collected by hand or maximal. | Analyse > Ambient > Play the step token game | S, X |
 | [Stochastic nets](net-classes.md#stochastic-nets) | Transitions fire after random delays given by rate functions. | File > New… | |
 | [Stochastic simulation](simulation.md#stochastic-simulation) | Gillespie runs, averaged; a seed repeats a result. | Analyse > Simulate over time and plot… | |
+| [Structural boundedness, repetitivity, consistency, liveness, controllability](analysis.md#matrix-based-structural-properties) | Properties of the incidence matrix that hold for every initial marking, decided exactly. | Net properties, **Properties** tab | |
 | [Structural properties](analysis.md#structural-properties) | State machine, marked graph, free choice, pure, conservative, connected and more. | Net properties, **Structure** tab | |
 | [Stubborn sets](slicing.md#stubborn-sets) | A reduced state space that keeps deadlocks and the markings of the places a property reads. | Slice and compare; framework pipeline | |
 | [Subnets](editor.md#subnets-and-breadcrumbs) | Pages inside the net, drawn as coarse transitions; open, ungroup, hierarchy. | Edit > Group into subnet; double-click to open | Ctrl+G, Enter |
+| [Synchronic distance](analysis.md#liveness-levels-and-fairness) | How far the firing counts of two transitions can drift apart, for every pair. | Net properties, **Liveness and fairness** tab | |
 | [Switching class](net-classes.md#switching-class) | Changes the class of a Petri net, keeping what still fits. | Class badge in the toolbar | |
 
 ## T

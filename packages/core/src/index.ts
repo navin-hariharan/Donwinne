@@ -3,3 +3,4 @@ export * from "./expr";
 export * from "./multiset";
 export * from "./semantics";
 export * from "./ambient";
+export * from "./transform";

@@ -34,6 +34,12 @@
  * - {@link faultTolerance}, {@link injectFaults}: wrong advices caused by extra database tokens.
  */
 export { analyseNet } from "./analyse";
+export { analyseDynamics } from "./dynamics";
+export { analyseAlgebra } from "./algebra";
+export { checkReachability } from "./reach";
+export type { ReachabilityOptions } from "./reach";
+export { coverabilityGraph } from "./coverability";
+export type { CoverabilityGraph } from "./coverability";
 export { toPTNet, structuralMatrices } from "./ptnet";
 export type { PTNet, PTArc, PTArcKind } from "./ptnet";
 export { incidenceMatrix, computeInvariants, minimalInvariants } from "./invariants";

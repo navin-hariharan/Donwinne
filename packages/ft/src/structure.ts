@@ -34,13 +34,16 @@ export function treeOf(net: Net): { nodes: FTNode[]; edges: FTEdge[] } {
 /**
  * Inputs of a node in their logical order: left to right by x coordinate, ties broken by edge order.
  * The order matters for PAND (failure order), SPARE (primary first) and FDEP (trigger first).
+ * A doubled connection counts once, as validation says ("connected … twice"): otherwise an XOR
+ * or k-of-n gate would count the same input twice. Self-loops (an error) are left out.
  */
 export function orderedInputs(net: Net, id: string): string[] {
   const { nodes, edges } = treeOf(net);
   const byId = new Map(nodes.map((n) => [n.id, n]));
+  const seen = new Set<string>();
   return edges
     .map((e, i) => ({ e, i }))
-    .filter(({ e }) => e.target === id && byId.has(e.source))
+    .filter(({ e }) => e.target === id && e.source !== id && byId.has(e.source) && !seen.has(e.source) && !!seen.add(e.source))
     .sort((a, b) => byId.get(a.e.source)!.x - byId.get(b.e.source)!.x || a.i - b.i)
     .map(({ e }) => e.source);
 }

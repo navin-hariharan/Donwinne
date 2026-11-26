@@ -27,6 +27,11 @@ PNS_DEV_URL=http://localhost:5173 pnpm --filter @pns/desktop start   # terminal 
 To open a model on startup, pass it on the command line:
 `pnpm --filter @pns/desktop exec electron . path/to/model.pns.json`.
 
+To save a picture of the window and exit (for automated checks), pass `--screenshot <file.png>`:
+`pnpm --filter @pns/desktop exec electron . --screenshot shot.png`. The window is drawn off-screen, so
+nothing appears and focus is never taken; it uses a temporary profile, so your auto-saved work is not
+touched, and it runs even while the app is already open.
+
 If `pnpm install` doesn't download the Electron binary (because of pnpm 10 build-script approval or
 a blocked network), run `node node_modules/electron/install.js` in this folder.
 
@@ -53,6 +58,27 @@ Where to build each OS's installers:
 On GitHub, the **Desktop release** workflow (`.github/workflows/desktop-release.yml`) does all three
 whenever the version changes and attaches the installers to a release `v<version>`. Signing secrets
 are optional; without them the installers are unsigned.
+
+## Updates
+
+Installed copies update themselves from the GitHub releases (`src/updater.ts`, with `electron-updater`).
+About 8 seconds after start and then every 4 hours, the app reads `latest.yml` (Windows),
+`latest-mac.yml` or `latest-linux.yml` from the newest release. By default it downloads a new version
+in the background and installs it the next time the app quits. A banner offers **Restart Now** (it
+asks first if there are unsaved changes). Under **Help** are **Check for Updates…** and **Install Updates
+Automatically**. With the second unchecked, the banner asks before downloading each update. The choice
+is kept in `update-settings.json` in the app's data folder. Failed background checks (offline, no
+release yet) stay silent. If an update fails after it was found, the banner links to the releases page.
+
+- `publish` in `package.json` (GitHub, `navin-hariharan/donwinne`) makes electron-builder write
+  `app-update.yml` into the app and `latest*.yml` next to the installers. The release workflow uploads
+  those, the `.blockmap` files (for smaller downloads) and the macOS `.zip` (macOS updates install from
+  it, not from the dmg).
+- **Windows** (NSIS) and **Linux** AppImage update in place. The **deb** asks for the system password
+  to install. **macOS** can only install updates into a signed app; unsigned builds get the banner
+  link to the releases page instead.
+- Updates are off when the app runs from source, in `--screenshot` mode, or with `PNS_DISABLE_UPDATES=1`.
+- Copies older than 0.4.2 have no updater: they need one manual install of 0.4.2 or newer.
 
 The app icon is `resources/icon.png` (1024×1024, the Donwinne logo); electron-builder derives the
 Windows and macOS icons from it. Add `icon.icns` or `icon.ico` beside it to use hand-tuned versions.

@@ -27,7 +27,7 @@ export function exportPrism(net: Net, options: PrismOptions = {}): string {
   if (odd) throw new ExportError(`PRISM CTMCs only have exponentially timed transitions; "${odd.name}" is ${odd.kind}.`);
   const bound = options.bound ?? 100;
   if (!Number.isInteger(bound) || bound < 1) throw new ExportError("The PRISM place bound must be a whole number of at least 1.");
-  const names = assignNames(net);
+  const names = assignNames(net, undefined, PRISM_KEYWORDS);
   const taken = new Set([...names.place.values(), ...names.transition.values(), ...names.constant.values()]);
   let maxName = "Max";
   while (taken.has(maxName)) maxName += "_";
@@ -36,9 +36,11 @@ export function exportPrism(net: Net, options: PrismOptions = {}): string {
   for (const c of net.declarations.constants) {
     const v = c.value.trim();
     const type = /^[+-]?\d+$/.test(v) ? "int" : /^(true|false)$/.test(v) ? "bool" : "double";
-    lines.push(`const ${type} ${names.constant.get(c.name)} = ${printPrism(parseInlined(net, v || "0", `The constant "${c.name}"`), names, new Map())};`);
+    lines.push(`const ${type} ${names.constant.get(c.name)} = ${printPrism(parseInlined(net, v || "0", `The constant "${c.name}"`), names, [])};`);
   }
-  lines.push("", `module ${sanitize(net.name, "net")}`);
+  let moduleName = sanitize(net.name, "net");
+  if (PRISM_KEYWORDS.has(moduleName)) moduleName += "_";
+  lines.push("", `module ${moduleName}`);
   const boundOf = new Map<string, string>();
   const limit = new Map<string, number>();
   for (const p of names.places) {
@@ -71,11 +73,16 @@ export function exportPrism(net: Net, options: PrismOptions = {}): string {
         case "read": {
           const n = w(e);
           if (n > 0) guard.push(`(${e.place} >= ${n})`);
+          // Mass action counts read arcs too (as the simulator does).
+          consumed.push([e.place, n]);
           break;
         }
-        case "inhibitor":
-          guard.push(`(${e.place} < ${w(e)})`);
+        case "inhibitor": {
+          // Weight 0: the arc has no effect in Donwinne's firing rule (it never blocks).
+          const n = w(e);
+          if (n > 0) guard.push(`(${e.place} < ${n})`);
           break;
+        }
         case "equal":
           guard.push(`(${e.place} = ${w(e)})`);
           break;
@@ -101,14 +108,14 @@ export function exportPrism(net: Net, options: PrismOptions = {}): string {
       updates.push(`(${p}' = ${p} ${d > 0 ? "+" : "-"} ${Math.abs(d)})`);
     }
     const rateSrc = t.rate?.trim() || "MassAction(1)";
-    const rate = printPrism(parseInlined(net, rateSrc, `The rate of "${t.name}"`), names, new Map(consumed));
+    const rate = printPrism(parseInlined(net, rateSrc, `The rate of "${t.name}"`), names, consumed);
     lines.push(`  [${names.transition.get(t.id)}] ${guard.join(" & ") || "true"} -> ${rate} : ${updates.join(" & ") || "true"};`);
   }
   lines.push("endmodule", "");
   return lines.join("\n");
 }
 
-function binomialTerms(consumed: Map<string, number>): string[] {
+function binomialTerms(consumed: [string, number][]): string[] {
   const out: string[] = [];
   for (const [p, n] of consumed) {
     if (n === 0) continue;
@@ -127,8 +134,8 @@ function binomialTerms(consumed: Map<string, number>): string[] {
   return out;
 }
 
-function printPrism(e: Expr, names: Names, consumed: Map<string, number>): string {
-  return printExpr(e, {
+function printPrism(e: Expr, names: Names, consumed: [string, number][]): string {
+  return printExpr(prismOperators(e), {
     and: "&",
     or: "|",
     not: "!",
@@ -141,11 +148,48 @@ function printPrism(e: Expr, names: Names, consumed: Map<string, number>): strin
         if (args.length !== 1) throw new ExportError("MassAction takes exactly one argument.");
         return [`(${print(args[0])})`, ...binomialTerms(consumed)].join(" * ");
       }
-      if (name === "abs" || name === "min" || name === "max" || name === "floor" || name === "ceil" || name === "pow" || name === "log")
+      if (name === "min" || name === "max" || name === "floor" || name === "ceil" || name === "round" || name === "pow" || name === "mod")
         return undefined;
+      // PRISM's log takes the base as a second argument; Donwinne's log and ln are natural logarithms.
+      const base: Record<string, string> = { log: "2.718281828459045", ln: "2.718281828459045", log10: "10", log2: "2" };
+      if (base[name] && args.length === 1) return `log(${print(args[0])}, ${base[name]})`;
+      // PRISM has no abs.
+      if (name === "abs" && args.length === 1) return `max(${print(args[0])}, -(${print(args[0])}))`;
+      if (name === "sqr" && args.length === 1) return `pow(${print(args[0])}, 2)`;
       if (name === "sqrt") return `pow(${print(args[0])}, 0.5)`;
       if (name === "exp") return `pow(2.718281828459045, ${print(args[0])})`;
       throw new ExportError(`PRISM has no function "${name}".`);
     },
   });
+}
+
+/**
+ * PRISM's reserved words (manual, "Reserved keywords"), including the single letters of its property
+ * operators: places named S, I, R, P or E (common in epidemic and chemical models) must be renamed.
+ */
+const PRISM_KEYWORDS: ReadonlySet<string> = new Set([
+  "A", "bool", "clock", "const", "ctmc", "C", "double", "dtmc", "E", "endinit", "endinvariant", "endmodule",
+  "endobservables", "endrewards", "endsystem", "false", "formula", "filter", "func", "F", "global", "G", "init",
+  "invariant", "I", "int", "label", "max", "mdp", "min", "module", "X", "nondeterministic", "observable",
+  "observables", "of", "Pmax", "Pmin", "P", "pomdp", "popta", "probabilistic", "prob", "pta", "rate", "rewards",
+  "Rmax", "Rmin", "R", "S", "stochastic", "system", "true", "U", "W",
+]);
+
+/** PRISM has no % operator: a % b becomes mod(a, b) (both truncate towards zero). */
+function prismOperators(e: Expr): Expr {
+  switch (e.k) {
+    case "bin": {
+      const l = prismOperators(e.l);
+      const r = prismOperators(e.r);
+      return e.op === "%" ? { k: "call", name: "mod", args: [l, r] } : { ...e, l, r };
+    }
+    case "un":
+      return { ...e, e: prismOperators(e.e) };
+    case "call":
+      return { ...e, args: e.args.map(prismOperators) };
+    case "tuple":
+      return { ...e, items: e.items.map(prismOperators) };
+    default:
+      return e;
+  }
 }

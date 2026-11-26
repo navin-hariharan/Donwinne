@@ -19,6 +19,7 @@ Intelligent Systems* (HCII 2023, LNCS 14029, pp. 503-530).
 - [Stubborn sets](#stubborn-sets)
 - [The framework pipeline](#the-framework-pipeline)
 - [Results on the papers' examples](#results-on-the-papers-examples)
+- [Survey case studies](#survey-case-studies)
 - [Using the engine directly](#using-the-engine-directly)
 - [How it is tested](#how-it-is-tested)
 
@@ -202,11 +203,17 @@ A banner gives the answer for all properties together, and the table gives it fo
 | Fulfilled? | **Yes**, **No** or **Unknown**. It is the whole net's verdict. When the whole net could not be checked, it is the slice's verdict, but only if the slicing algorithm preserves that kind of property; hover the pill to see which graph decided. |
 | Why | A **Counterexample** (when the property fails) or a **Witness** (when it holds), where CTL gives a single path. AG that holds and EF that fails have none. |
 
-Which slices may stand in for the whole net (survey Table 3): abstract slicing, abstract slicing
-with parallel transitions and basic slicing keep every CTL\*-X property of the criterion places;
-CTL\*-X slicing (which needs weak fairness for liveness), APNSlicing (LTL-X) and safety slicing keep
-AG and EF of state formulas. Formulas with EX, AX, `deadlock` or `fireable(…)` depend on transitions
-a slice drops or merges, so their slice verdict never stands in.
+Which slices may stand in for the whole net: abstract slicing, abstract slicing with parallel
+transitions, basic slicing, CTL\*-X slicing and APNSlicing keep the verdict of every formula built
+from AG and EF over the criterion places, nested freely (`AG(EF(…))`, `EF(AG(…))`, with and, or,
+not); safety slicing keeps AG and EF of state formulas. The survey (Table 3) and Rakow promise all of
+CTL\*-X for the first group, but only under **weak fairness**, which the model checker does not
+assume: the transitions a slice drops can keep firing forever in the whole net, so a formula with AF,
+EG, AU or EU can be false on the net and true on the slice. For example, with a → t → c and an
+independent loop x ⇄ y, `AF(c > 0)` is false on the net (the loop can run forever) and true on the
+slice for {c}. Such a formula is therefore always checked on the whole net. Formulas with EX, AX,
+`deadlock` or `fireable(…)` depend on transitions a slice drops or merges, so their slice verdict
+never stands in either.
 
 Why EF counts for safety slicing: EF s is not a liveness property but reachability, the negation
 of the safety property AG ¬s. Rakow's safety slice reaches exactly the criterion markings the net
@@ -309,6 +316,50 @@ which the survey's figure does not fully give.
 **The ambient garage** (thesis chapter 7): the full single-step graph of its T-APN has more than
 two million states; stubborn sets find all its deadlocks in 355.
 
+## Survey case studies
+
+The survey compares the static algorithms (Sec. 7.1, Figs 22-25) on two nets, both under
+**File > Examples**:
+
+- **Survey Fig. 2: insurance claim system.** 16 places, 18 transitions, not strongly connected.
+  φ1 = `AG(ac -> AF(cs))` (criterion {ac, cs}), φ2 = `AG(ac <= 50)` (criterion {ac}).
+- **Survey Fig. 21: WSU-CASAS smart apartment.** 45 places, 106 transitions (52 pairs MaMb/MbMa
+  plus Entering and Exiting); one token, the resident, moves between the sensor places.
+  φ1 = `EF((M016 | M017 | M018) -> (D007 | D014 | D015 | D016))` (with ⇒, as printed),
+  φ2 = `AG(!((A002_hot_tap | A002_cold_tap) & A001_Stove))`.
+
+Sizes as places / transitions / states / edges (Donwinne, then the survey's charts where they differ):
+
+| Net, property | Entire net | APN, CTL\*-X | Abstract | Safety |
+| --- | --- | --- | --- | --- |
+| CASAS φ1 | 45 / 106 / 45 / 106 | 44 / 106 / 45 / 106 (survey 45 places) | 37 / 99 / 38 / 99 (survey 38 places) | |
+| CASAS φ2 | 45 / 106 / 45 / 106 | 44 / 106 / 45 / 106 (survey 45 places) | 29 / 91 / 30 / 91 (survey 30 places) | 44 / 105 / 44 / 105 (survey 45 / 106 / 45 / 106) |
+| Insurance φ1 | 16 / 18 / 29 / 59 | 11 / 14 / 12 / 14 (survey 16 / 18 / 29 / 59) | 8 / 11 / 9 / 11 (survey 12 / 14 / 16 / 32) | |
+| Insurance φ2 | 16 / 18 / 29 / 59 | 4 / 4 / 5 / 4 (survey 16 / 18 / 29 / 59) | 3 / 3 / 4 / 3 (survey 12 / 14 / 16 / 32) | 4 / 3 / 4 / 3 (survey 9 / 10 / 10 / 10) |
+
+The entire nets match the survey exactly, and so do all the CASAS state and edge counts: abstract
+slicing merges 7 dead-end places for φ1 (the sensors next to M016-M018 may not merge into those criterion places) and
+15 for φ2. φ1, φ2 and other formulas keep their verdicts on every slice that preserves them. The
+CTL\*-X slice of the insurance net for {ac, cs} is exactly Fig. 2(b).
+
+Known differences:
+
+- **The exit place.** Outside_exiting has no outgoing transition, so it is no condition of any kept
+  transition and every static slice drops it (one place fewer than the survey). Safety slicing also
+  drops Exiting, which only takes the resident away from D001, and with it the empty marking.
+- **The insurance net in Sec. 7.** The survey's charts give APN and CTL\*-X slices as large as the
+  whole net, contradicting its own Fig. 2(b), which drops the emergency branch. Its numbers are those
+  of slices that keep the whole net: with the criterion {ac, cs, end}, CTL\*-X slicing gives
+  16 / 18 / 29 / 59 and abstract slicing 12 / 14 / 16 / 32 (merging record, assess_by_expert, offer
+  and end_emergency), exactly the survey's values. Its safety slice (9 / 10 / 10 / 10) is not
+  reproduced: Rakow's safety slice for {ac} keeps only claim, recorded, customer, ac and record,
+  accept, handle.
+- **Text and charts.** Sec. 7.1.3 says 108 edges and "transitions reduced by 4" for CASAS; the charts
+  say 106 and 91 (15 fewer), which is what the net gives.
+- **Transcription.** The figure's names were legible throughout; its "A002_Cold_tap" is written
+  A002_cold_tap, as in φ2. The item labels (I001-I012) are notes on the door places, not places, and
+  the unlabelled nodes of Fig. 2 got descriptive names (handle, to_assess, emergency_check...).
+
 ## Using the engine directly
 
 ```ts
@@ -341,3 +392,5 @@ places, every visible marking, and that a slice opened as a net behaves like the
 pipeline on the chapter's example and on the garage: the yes and no answers, that a counterexample
 uses the APN's transition names, that the slice decides only when its algorithm preserves the
 property, and that its counterexample names the transitions of the opened slice.
+[`packages/editor/test/survey-cases.test.ts`](../packages/editor/test/survey-cases.test.ts) checks
+the [survey case studies](#survey-case-studies): Fig. 2(b), the sizes above and the verdicts.

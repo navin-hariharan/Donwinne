@@ -3,14 +3,15 @@
   "description": "Donwinne is a Petri nets studio",
   "private": true,
   "license": "SEE LICENSE IN LICENSE.md",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "type": "module",
+  "main": "apps/desktop/build/main.cjs",
   "engines": {
     "node": ">=20.19"
   },
   "scripts": {
     "dev": "pnpm --filter @pns/web dev",
-    "build": "pnpm --filter @pns/web build",
+    "build": "pnpm --filter @pns/web build && pnpm --filter @pns/desktop build",
     "test": "vitest run",
     "bench": "vitest bench --run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -21,6 +22,7 @@
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
     "@xmldom/xmldom": "^0.9.12",
+    "electron": "^44.11.3",
     "elkjs": "0.9.3",
     "react": "18.3.1",
     "react-dom": "18.3.1",

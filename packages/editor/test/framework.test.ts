@@ -104,6 +104,25 @@ describe("framework pipeline", () => {
     expect(slicePreserves("backward", c("AG(p > 0)"))).toBe(false);
     expect(slicePreserves("safety", c("AF(p > 0)"))).toBe(false);
     expect(slicePreserves("abstract", c("AG(p > 0)"), "maximal")).toBe(false);
+    // Without fairness a slice keeps only AG/EF verdicts: AF, EG, AU and EU can change.
+    for (const alg of ["abstract", "basic", "ctlStarX", "apnSlicing"] as const) {
+      expect(slicePreserves(alg, c("AF(p > 0)")), alg).toBe(false);
+      expect(slicePreserves(alg, c("EF(AG(p > 0))")), alg).toBe(true);
+    }
+  });
+
+  it("a slice never decides AF: the dropped part of the net can run forever (regression)", () => {
+    // a → t → c, and an independent loop x ⇄ y. AF(c > 0) is false on the net (the loop can run
+    // forever without t) but true on the slice for {c}, which drops the loop.
+    const n = emptyNet("pt", "fair") as Net;
+    for (const [id, m] of [["a", "1"], ["c", ""], ["x", "1"], ["y", ""]]) n.places.push({ id, name: id, x: 0, y: 0, marking: m });
+    for (const id of ["t", "u", "v"]) n.transitions.push({ id, name: id, x: 0, y: 0 });
+    [["a", "t"], ["t", "c"], ["x", "u"], ["u", "y"], ["y", "v"], ["v", "x"]].forEach(([s, t], i) => n.arcs.push({ id: `a${i}`, source: s, target: t, kind: "normal", inscription: "1" }));
+    const r = runFramework(n, { formulas: ["AF(c > 0)"], algorithm: "abstract", maxStates: 1000, spaces: ["single"], equivalence: false });
+    const v = r.verdicts[0];
+    expect(v.full).toBe("false");
+    expect(v.fulfilled).toBe("no");
+    expect(v.decidedBy).not.toBe("slice");
   });
 
   it("falls back to stubborn sets for AG/EF properties when the whole graph is too big", () => {

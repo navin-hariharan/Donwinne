@@ -164,6 +164,30 @@ describe("APN step semantics (Sec. 3.3)", () => {
     expect(texts(n, enabledSteps(n, M0).steps)).toEqual(["{(t,b)}"]);
   });
 
+  it("Sec. 3.3, Fig. 3.1: {(t,b),(t,b)} is not enabled, for lack of a second black token in p1 and p2 (regression: it was read as {(t,b)})", () => {
+    const n = thesisFig3_1();
+    const M0 = ambientInitialMarking(n);
+    const twice = parseStep(n, "{(t,b),(t,b)}");
+    expect(twice).toHaveLength(2);
+    expect(isStepEnabled(n, M0, twice)).toBe(false);
+    expect(() => fireStep(n, M0, twice)).toThrow(/not enabled/);
+  });
+
+  it("Sec. 3.3: a repeated (t, c) counts with its multiplicity in Pre(U) and in M + Post(U) ≤ K (auto-concurrency)", () => {
+    const n = apn([["p", "2`b"], ["q", ""]], ["p>t", "t>q"]);
+    n.places[0].capacity = 2;
+    const M = ambientInitialMarking(n);
+    const twice = [{ transition: "t", colour: "b" }, { transition: "t", colour: "b" }];
+    // q has K = 1: two b tokens do not fit.
+    expect(isStepEnabled(n, M, twice)).toBe(false);
+    const n2 = structuredClone(n);
+    n2.places[1].capacity = 2;
+    expect(isStepEnabled(n2, ambientInitialMarking(n2), twice)).toBe(true);
+    expect(markingPairs(n2, fireStep(n2, ambientInitialMarking(n2), twice))).toEqual(["(q,b)", "(q,b)"]);
+    // The CRG is a step transition system over sets of structured transitions (Def. 5).
+    expect(texts(n2, enabledSteps(n2, ambientInitialMarking(n2)).steps)).toEqual(["{(t,b)}"]);
+  });
+
   it("Sec. 3.3, Fig. 3.1: firing {(t,b)} gives M1 = {(p1,w),(p2,w),(p3,b),(p4,b),(p5,w)}", () => {
     const n = thesisFig3_1();
     const M1 = fireStep(n, ambientInitialMarking(n), parseStep(n, "{(t,b)}"));
@@ -405,6 +429,9 @@ describe("T-APN class and semantics (Def. 20, Sec. 5.2-5.3)", () => {
     expect(texts(n, enabledSteps(n, M0).steps)).toEqual(["{(t,b)}"]);
     expect(isStepEnabled(n, M0, parseStep(n, "{(t,w)}"))).toBe(false);
     expect(isStepEnabled(n, M0, parseStep(n, "{(t,b),(t,w)}"))).toBe(false);
+    // "(t,b) cannot fire twice, since the step {(t,b),(t,b)} is not enabled due to the lack of
+    // sufficient number of tokens in the places p1, p2 and p5" (Sec. 5.2).
+    expect(isStepEnabled(n, M0, parseStep(n, "{(t,b),(t,b)}"))).toBe(false);
   });
 
   it("Sec. 5.3, Fig. 5.1(b): CRG is M0 --{(t,b)}--> M1 = {(p1,w),(p2,w),(p3,b),(p4,b)}", () => {

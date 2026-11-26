@@ -577,7 +577,7 @@ nothing in the models or the formulas was changed to make a result fit.
 | Conference room | Explored up to 300,000 states (the whole graph has more than 5 million) and checked three-valued. The 2 differences are 7.11 and 7.17a; the 11 unknown verdicts are figures 7.1, 7.3, 7.5, 7.9, 7.19, 7.23, 7.25, 7.27, 7.29, 7.31 and 7.35 |
 | Path lengths of Sec. 7.3 | **All 8 reproduce**: garage following advices 4 and 6; conference room following advices 14, 16 and 12 (on up to 1,000,000 states); garage ignoring advices 8 and 10; conference room ignoring advices 16 |
 | Verdicts, maximal steps | **40 of 43 agree** (differences: 7.11 conference, 7.13 garage, 7.39b conference) |
-| Graph sizes, maximal steps | Garage 229 states, 1990 edges, 1 dead state; conference room 314 states, 1620 edges, 1 dead state. The thesis's "maximum concurrency" drawings have 52/87 and 82/130, so **these sizes are not reproduced** (the thesis draws them only for visualisation) |
+| Graph sizes, maximal steps | Garage 229 states, 1990 edges, 1 dead state; conference room 366 states, 1740 edges, 1 dead state. The thesis's "maximum concurrency" drawings have 52/87 and 82/130, so **these sizes are not reproduced** (the thesis draws them only for visualisation) |
 
 The two differences under interleaving, in short:
 

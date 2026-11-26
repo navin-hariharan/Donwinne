@@ -1,5 +1,6 @@
 import { Net } from "@pns/core";
 import { ambientConferenceRoom, ambientGarage, fig410, fig411, fig49 } from "@pns/apn";
+import { casasApartment, insuranceClaim } from "./examples-survey";
 
 /** An example whose net is built on first use, by the APN composition operators of @pns/apn. */
 function built(title: string, make: () => Net, comment: string): { title: string; net: Net } {
@@ -84,6 +85,10 @@ export const EXAMPLES: { title: string; net: Net }[] = [
       declarations: { colourSets: [], variables: [], constants: [] },
     },
   },
+  // The case studies of the slicing survey (Khan, Konios and Guelfi 2018, Sec. 7.1); their
+  // properties and transcription notes are in examples-survey.ts.
+  { title: "Survey Fig. 2: insurance claim system (place/transition)", net: insuranceClaim() },
+  { title: "Survey Fig. 21: WSU-CASAS smart apartment (place/transition)", net: casasApartment() },
   {
     title: "Konios Fig. 3.1: colour-sensitive inhibitor arc (APN)",
     net: {

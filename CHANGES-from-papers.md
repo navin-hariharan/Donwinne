@@ -256,3 +256,93 @@ Every test the audit listed is in: 30 independent transitions; invalid weight le
 **Checked:** 712 tests pass (36 new), typecheck clean, build OK. In the browser, APN properties on Fig. 4.10 with a 10-state limit shows Live as Unknown, 1-bounded as Yes (by capacity) and the proven-bound column, with no axe issues in light or dark mode.
 
 **Version 0.4.1.** This audit is released as 0.4.1: every package.json, `packages/editor/src/version.ts`, the README badge and the file-formats doc. The release workflow builds and publishes `v0.4.1` on the next push to `main`.
+
+## Update 8: every paper read again, the classic analyses, and a bug sweep
+
+Sources this time: the thesis, the slicing survey, the framework chapter, and a fourth document from
+the papers folder, A. Halder, *A Study of Petri Nets: Modeling, Analysis and Simulation* (2006), the
+general textbook material (liveness levels, fairness, synchronic distance, structural properties).
+Every finding below was checked against the source and has a test.
+
+**From the 2006 study: analyses that were missing.**
+
+| Concept (report section) | Where |
+| --- | --- |
+| Liveness levels L0–L4 of each transition and of the net (§5.2.1.3) | Net properties, new **Liveness and fairness** tab; `analyseDynamics` |
+| Repetitive, partially repetitive; consistent, partially consistent (behavioural) | Properties tab |
+| Conservative and strictly conservative over the reachable markings, with the weights | Properties tab |
+| Persistence (the same as DCF, now also under its own name) | Properties tab |
+| B-fairness with its classes, unconditional fairness (§5.2.1.11) | Liveness and fairness tab |
+| Synchronic distance of every pair of transitions (§5.2.1.10) | Liveness and fairness tab |
+| Structural boundedness (with the places some marking makes unbounded), structural conservation, repetitivity, consistency (and their partial forms), structural liveness, controllability (rank condition and complete controllability), structural B-fairness (§5.2.2) | Properties tab; `analyseAlgebra`, decided exactly by a whole-number simplex (`rational.ts`) |
+| Reachability of a marking and the state equation (§5.2.1.1, §5.2.2 III–IV) | New **Reachability** tab; `checkReachability` |
+| Directed circuits and pure directed circuits (§4.2.5, §4.2.7) | Structure tab |
+| Reversed (inverse) net and dual net (§4.3.3, §4.2.12) | Analyse > Open the reversed net, Open the dual net (also in the desktop menus); `reverseNet`, `dualNet` |
+
+How they are decided: bounded nets exactly from the reachability graph; unbounded nets from the
+Karp–Miller coverability graph, where "can this repeat forever?" is a small exact linear program over
+its cycles (so L2 and L3 are told apart correctly); otherwise only what the explored part proves,
+the rest Unknown. The matrix answers are theorems for P/T nets: with inhibitor or equal arcs or
+capacities the "can happen" answers become Unknown, and with reset arcs or marking-dependent
+weights they are n/a. The modelling constructs of chapter 3 and the sub-net definitions of chapter 4
+are definitions, not analyses, and need no code. 27 tests (`classic.test.ts`) use textbook nets,
+among them one net with a transition at each of the levels L0, L1, L2 and L3.
+
+**From the thesis: bugs fixed.**
+
+- **The construction φ broke Theorem 1 on some nets.** Def. 21 (iii) as printed adds Post_NEW arcs to
+  control places that inhibit nothing; such a place collects f(c) tokens nothing consumes, so a place
+  reached by two different steps gives two markings of φ(N) but one of N. Only inhibitor places get
+  them now, as clause (xi) of M'0 already assumes. A self-loop step's control place also gets its
+  Pre_REP arc. A new test builds 21 random composite step nets and checks CRG(N) ≅ CRG(φ(N)) on each:
+  the old construction failed on one. This changed one of Donwinne's own numbers: the conference room's
+  colour-blind maximal-step graph has 366 states and 1,740 edges (was 314 and 1,620); the thesis draws
+  82 states, and that difference is still explained in the docs.
+- **Steps with a repeated structured transition** such as {(t,b),(t,b)} were read as {(t,b)}. The
+  thesis (Sec. 3.3, Fig. 3.1) says that step is not enabled, for lack of a second black token; it now
+  counts with its multiplicity.
+- **Gluing conditions of Defs 8 and 12** compared colour set names and raw capacities; they now compare
+  the colours and K(g, c), where no capacity means K = 1.
+- **Structural boundedness of APNs (Def. 17)** said Unknown for places without an explicit capacity,
+  though their K is 1.
+- **Two property templates** (Sec. 7.1): "Goal reachable after ignoring advices" now joins its scenarios
+  with | as Fig. 7.7 does, and "an advice follows the user's action" accepts the conference room's
+  entering_room > 1. One template had been given the same field twice by mistake; a test now forbids it.
+
+**From the survey and the chapter.**
+
+- **A slice could decide AF, EG, AU and EU properties wrongly.** The survey's Table 3 and Rakow's
+  CTL\*-X result hold under weak fairness, which the model checker does not assume: in the whole net the
+  dropped transitions can fire forever. With a → t → c and an independent loop, AF(c > 0) is false on
+  the net and true on the slice. The framework pipeline now lets a slice stand in only for formulas
+  built from AG and EF (any nesting); everything else is checked on the whole net. Regression test in
+  `framework.test.ts`.
+- **Concerned slicing (Alg. 11)** left out output places of kept transitions outside the backward
+  slice; **abstract slicing's neutral-transition merge** was blocked by transitions outside the slice
+  and allowed next to inhibitor or equal arcs on the merged-into place. All three now follow the
+  algorithms, with the extra soundness conditions written in the code.
+- **The survey's two case studies are now examples:** the insurance claim system (Fig. 2) and the
+  WSU-CASAS smart apartment (Fig. 21, 45 places, 106 transitions). The CTL\*-X slice of the insurance
+  net is exactly Fig. 2(b), and every CASAS state and edge count of the survey's charts is reproduced.
+  Where the survey's own numbers disagree with its figures, docs/slicing.md says how.
+- Not reproducible: the chapter's evaluation also uses an extra care home and a smart kitchen, whose
+  models are only in papers that are not in the repository.
+
+**Other bugs found by differential and fuzz tests.**
+
+- **Exporters:** PRISM and SBML mass-action rates left out read arcs (the simulator counts them);
+  PRISM clashed with its own keywords as place names and wrote some functions PRISM does not have;
+  LoLA mishandled a read arc next to a normal arc on the same place; the SBML compartment's id could
+  clash with a place; ANDL, TINA and CSV details. Every exporter is now compared with the firing rule
+  on random nets, and PNML, native and Snoopy files round-trip every example.
+- **Fault trees:** a doubled connection was counted twice in XOR and k-of-n gates; minimal path sets of
+  non-coherent trees; DNF export of trees with no or empty cut sets, and of names with spaces; tidy
+  layout reordered PAND, SPARE and FDEP inputs (whose order matters). BDD probabilities, cut sets and
+  Monte Carlo are now compared on random trees.
+- **Editor:** copying a subnet left its contents behind; pasting Petri net nodes into a fault tree;
+  editing one copy of a logical place did not update the others; arc kinds the net class forbids could
+  still be drawn by key or after opening another model; "Keep this marking" stopped a timed token game
+  being timed; the token trail after firing from an earlier step; an ungrouped subnet left its page open;
+  switching to a coloured class without a Dot colour set.
+
+**Checked:** 821 tests pass (712 before), typecheck clean for the web and desktop apps, web build OK.

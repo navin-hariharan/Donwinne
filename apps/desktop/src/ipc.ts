@@ -11,6 +11,9 @@ export const IPC = {
   takePendingOpen: "pns:take-pending-open",
   menu: "pns:menu",
   openPath: "pns:open-path",
+  updateStatus: "pns:update-status",
+  updateGet: "pns:update-get",
+  updateAction: "pns:update-action",
 } as const;
 
 export type NativeEditCommand = "undo" | "redo" | "delete" | "selectAll";

@@ -212,13 +212,18 @@ export function slicePreserves(algorithm: SlicingAlgorithm, f: FormulaCriterion,
   // which changes which steps are maximal, so under maximal steps no slice stands in for the net.
   if (semantics === "maximal") return false;
   switch (algorithm) {
+    // The closure slices drop only transitions that never change a slice place, so the reachable
+    // markings of the slice places are the same, and AG/EF formulas, nested freely, keep their
+    // verdicts. The rest of CTL (AF, EG, AU, EU) only under weak fairness, which a model checker does
+    // not assume: the net can fire dropped transitions forever, so AF(c > 0) may be false on the net
+    // and true on the slice (see slicing.ts, FormulaCriterion.reachability).
     case "abstract":
     case "abstractParallel":
     case "basic":
-      return true;
-    case "ctlStarX": // CTL*-X under weak fairness: without fairness only the safety fragment is sure.
-    case "apnSlicing": // LTL-X: AG of a state formula, and EF as its negation.
-    case "safety":
+    case "ctlStarX":
+    case "apnSlicing":
+      return f.reachability;
+    case "safety": // Rakow's safety slice: AG of a state formula and EF as its negation.
       return f.safety;
     default:
       return false;

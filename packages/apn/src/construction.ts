@@ -91,7 +91,12 @@ export function classifyStepNet(net: Net): StepNetRoles {
       );
   }
   const stepControls = new Set(Object.values(controlOf));
-  const inhibitorPlaces = [...new Set(inhib.map((a) => a.source))];
+  // A self-loop step (Def. 12 with g1 = g2) is in g2• itself, so Def. 12 as printed gives it the
+  // inhibitor arc (cp^ts(p_f), t_s) from its own control place. The APN leaves that arc out (Def. 3
+  // forbids it next to the arc t_s → cp^ts(p_f); with K = 1 it changes nothing, since t_s cannot put a
+  // second c into its control place anyway), but the place is still an inhibitor place of N for φ.
+  const selfLoopControls = step.filter((t) => controlOf[t] && pre(t).includes(finishingOf[t])).map((t) => controlOf[t]);
+  const inhibitorPlaces = [...new Set([...inhib.map((a) => a.source), ...selfLoopControls])];
   const producedByStep = new Set(step.flatMap(post));
   const rootControls = inhibitorPlaces.filter((p) => !stepControls.has(p) && !producedByStep.has(p) && !arcs.some((a) => a.target === p));
   const rootOf: Record<string, string> = {};
@@ -327,6 +332,21 @@ export function constructTapn(apn: Net, opts: ConstructOptions = {}): Constructi
       origins[a.id] = { from: a.id, origin: "copied" };
     }
   }
+  // Pre_REP also replaces the inhibitor arc (cp^ts(p_f), t_s) that Def. 12 gives a self-loop step and
+  // the APN leaves out (see classifyStepNet): t_s takes f(c) from its own control place, which its
+  // emptying transitions give back. Without it the emptying transitions would put a second f(c) into
+  // the control place and be blocked by K = 1, and CRG(φ(N)) would lose their steps.
+  for (const t of roles.step) {
+    const pc = roles.controlOf[t];
+    const pt = roles.finishingOf[t];
+    if (!pc || !pt || !hasPre(pt, t) || apn.arcs.some((a) => a.kind === "inhibitor" && a.source === pc && a.target === t)) continue;
+    const id = freshArc(`${pc}_${t}_rep`);
+    const arc: Arc = { id, source: pc, target: t, kind: "normal", inscription: specialVar(modeVarOf.get(t) ?? "x"), points: [bend(apn, pc, t)] };
+    arcs.push(arc);
+    origins[id] = { origin: "replacedInhibitor" };
+    preRep.push([name.get(pc)!, name.get(t)!]);
+    needsSpecial.add(t);
+  }
   const addPost = (t: string, p: string, origin: "emptying" | "step") => {
     if (hasPost(t, p) || postNewIds.some(([a, b]) => a === t && b === p)) return;
     const mv = modeVarOf.get(t) ?? "x";
@@ -343,12 +363,17 @@ export function constructTapn(apn: Net, opts: ConstructOptions = {}): Constructi
   for (const t of roles.emptying)
     for (const p of directed.filter((a) => a.target === t && P_C.has(a.source) && P_I.has(a.source)).map((a) => a.source)) addPost(t, p, "emptying");
   // A step transition into p_t also serves the control places cp^t̂(p_t) of the other steps into p_t,
-  // and cp^ε(p^0) when p_t is the starting place.
+  // and cp^ε(p^0) when p_t is the starting place. Only inhibitor places (P_C ∩ P_I) get these arcs,
+  // as in the emptying case and in clause (xi) of M'0: Def. 21 (iii) as printed does not say so,
+  // but a control place that inhibits nothing (its place has no outgoing step) would collect f(c)
+  // tokens that nothing consumes, so a user reaching such a place by two different steps would end in
+  // two different markings of φ(N) but one of N, and Theorem 1 would fail (see theorem1.test.ts).
   for (const t of roles.step) {
     const pt = roles.finishingOf[t];
     if (!pt) continue;
-    for (const that of roles.step) if (that !== t && roles.finishingOf[that] === pt && roles.controlOf[that]) addPost(t, roles.controlOf[that], "step");
-    for (const [rc, start] of Object.entries(roles.rootOf)) if (start === pt) addPost(t, rc, "step");
+    for (const that of roles.step)
+      if (that !== t && roles.finishingOf[that] === pt && roles.controlOf[that] && P_I.has(roles.controlOf[that])) addPost(t, roles.controlOf[that], "step");
+    for (const [rc, start] of Object.entries(roles.rootOf)) if (start === pt && P_I.has(rc)) addPost(t, rc, "step");
   }
 
   // (x) Guards: B_t = {(x, f(x)) | x ∈ C(t)} on step transitions (T_G); the same pairing on any

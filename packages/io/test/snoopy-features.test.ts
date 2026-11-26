@@ -233,10 +233,11 @@ describe("text formats", () => {
     expect(apnn).toContain("\\function{vmax * E * (S^2 / (K^2 + S^2))}");
     expect(apnn).not.toContain("\\from{P_1}");
     const prism = exportPrism(net);
-    expect(prism).toContain("[conv] (S >= 1) & (P <= Max - 1) -> vmax * E * (pow(S, 2) / (pow(K, 2) + pow(S, 2))) : (S' = S - 1) & (P' = P + 1);");
+    // S, P and E are PRISM keywords, so they are renamed.
+    expect(prism).toContain("[conv] (S_ >= 1) & (P_ <= Max - 1) -> vmax * E_ * (pow(S_, 2) / (pow(K, 2) + pow(S_, 2))) : (S_' = S_ - 1) & (P_' = P_ + 1);");
     const fixedS = enzyme();
     fixedS.places[0].fixed = true;
-    expect(exportPrism(fixedS)).toContain(": (P' = P + 1);");
+    expect(exportPrism(fixedS)).toContain(": (P_' = P_ + 1);");
   });
 
   it("report recursive functions instead of looping", () => {

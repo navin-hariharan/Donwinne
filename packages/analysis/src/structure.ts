@@ -234,8 +234,36 @@ export function structuralProperties(pt: PTNet, g: Graph = netGraph(pt)): Struct
         ? ok("Every node can be reached from every other along the arcs.")
         : bad(`The net has ${strong.count} strongly connected components; e.g. there is no path from ${node(strong.comp.indexOf(0)).name} to ${firstOtherComp(strong.comp, node)}.`, componentWitnesses(strong.comp, node));
 
+  // DC and PDC (the report's §4.2.5 and §4.2.7): a circuit is a strongly connected component with
+  // an arc inside it; a pure circuit uses only nodes with exactly one input and one output node.
+  const circuitOf = (keep: (i: number) => boolean): NodeRef[] | null => {
+    const sub = succ.map((xs, i) => (keep(i) ? xs.filter(keep) : []));
+    const c = scc(sub);
+    const size = new Map<number, number>();
+    for (let i = 0; i < N; i++) if (keep(i)) size.set(c.comp[i], (size.get(c.comp[i]) ?? 0) + 1);
+    for (let i = 0; i < N; i++) {
+      if (!keep(i)) continue;
+      const k = c.comp[i];
+      if ((size.get(k) ?? 0) > 1) {
+        const nodes: NodeRef[] = [];
+        for (let j = 0; j < N; j++) if (keep(j) && c.comp[j] === k) nodes.push(node(j));
+        return nodes;
+      }
+    }
+    return null;
+  };
+  const dc = N ? circuitOf(() => true) : null;
+  const directedCircuits: Check = dc
+    ? { holds: true, witnesses: dc, reason: `${names(dc)} lie on a directed circuit (a path back to its start).` }
+    : { holds: false, witnesses: [], reason: "The net is acyclic: no directed path returns to its start, so every transition can fire only finitely often." };
+  const pureNode = (i: number) => (i < n ? pIn[i].length === 1 && pOut[i].length === 1 : tIn[i - n].length === 1 && tOut[i - n].length === 1);
+  const pdc = N ? circuitOf(pureNode) : null;
+  const pureDirectedCircuits: Check = pdc
+    ? { holds: true, witnesses: pdc, reason: `${names(pdc)} form a pure directed circuit: each of its places and transitions has exactly one input and one output.` }
+    : { holds: false, witnesses: [], reason: "No directed circuit consists only of places and transitions with exactly one input and one output." };
+
   // FT0, TF0, FP0, PF0, isolated
-  const has = (xs: NodeRef[], what: string, none: string): Check =>
+  const has =(xs: NodeRef[], what: string, none: string): Check =>
     xs.length ? { holds: true, witnesses: xs, reason: `${names(xs)} ${xs.length === 1 ? "has" : "have"} ${what}.` } : { holds: false, witnesses: [], reason: none };
   const inputTransitions = has(T.filter((_, t) => tIn[t].length === 0), "no input places and can always fire", "Every transition has an input place.");
   const outputTransitions = has(T.filter((_, t) => tOut[t].length === 0), "no output places", "Every transition has an output place.");
@@ -271,6 +299,8 @@ export function structuralProperties(pt: PTNet, g: Graph = netGraph(pt)): Struct
     inputPlaces,
     outputPlaces,
     isolatedNodes,
+    directedCircuits,
+    pureDirectedCircuits,
   };
 }
 

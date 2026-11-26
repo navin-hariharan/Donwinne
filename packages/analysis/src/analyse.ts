@@ -1,12 +1,14 @@
 // analyseNet: every analysis in one report, plus a readable summary.
 
 import type { Net } from "@pns/core";
+import { analyseAlgebra } from "./algebra";
 import { analyseBehaviour, structurallyFaithful } from "./behaviour";
+import { analyseDynamics } from "./dynamics";
 import { computeInvariants, incidenceMatrix } from "./invariants";
 import { checkAbort, toPTNet } from "./ptnet";
 import { siphonsAndTraps } from "./siphons";
 import { netGraph, structuralProperties } from "./structure";
-import type { AnalysisOptions, AnalysisReport, BehaviourResult, Check, NodeRef, Status, StructuralProperties, SummaryGroup, SummaryItem } from "./types";
+import type { AnalysisOptions, AnalysisReport, BehaviourResult, Check, DynamicsResult, NodeRef, Status, StructuralAnalysis, StructuralProperties, SummaryGroup, SummaryItem } from "./types";
 
 const ids = (xs: NodeRef[]) => [...new Set(xs.flatMap((x) => x.elementIds))];
 const list = (xs: NodeRef[], max = 3) => {
@@ -32,6 +34,8 @@ const STRUCTURAL: [keyof StructuralProperties, string, string][] = [
   ["inputPlaces", "Has input places (FP0)", "Some place has no input transitions."],
   ["outputPlaces", "Has output places (PF0)", "Some place has no output transitions."],
   ["isolatedNodes", "Has isolated nodes", "Some place or transition has no arcs."],
+  ["directedCircuits", "Has directed circuits (DC)", "Some directed path of arcs returns to where it started."],
+  ["pureDirectedCircuits", "Has pure directed circuits (PDC)", "Some directed circuit consists only of places and transitions with one input and one output."],
 ];
 
 function kBoundedNote(b: BehaviourResult): string {
@@ -58,6 +62,90 @@ function deadStatesNote(b: BehaviourResult): string {
   return "Unknown: no dead state was found in the explored part of the state space.";
 }
 
+type Add = (key: string, group: SummaryGroup, label: string, description: string, status: Status, explanation: string, highlight?: NodeRef[]) => void;
+
+const word = (s: Status) => (s === "yes" ? "Yes" : s === "no" ? "No" : s === "unknown" ? "Unknown" : "n/a");
+
+function sourceText(d: DynamicsResult): string {
+  return d.source === "reachability"
+    ? "the complete reachability graph"
+    : d.source === "coverability"
+      ? "the coverability graph"
+      : "the explored part of the state space";
+}
+
+/** Summary lines for the liveness levels, repetitivity, consistency, conservation and fairness. */
+function addDynamics(add: Add, d: DynamicsResult, P: NodeRef[]): void {
+  const placeName = (id: string) => P.find((p) => p.id === id)?.name ?? id;
+  const src = sourceText(d);
+  const skipped = d.source === "skipped";
+  const why = (s: Status, yes: string, no: string, extra = ""): string =>
+    skipped ? `n/a: ${d.synchronicNote.replace(/^Not analysed: /, "")}` : s === "yes" ? `Yes: ${yes}` : s === "no" ? `No: ${no}` : s === "n/a" ? "n/a" : `Unknown: not decided from ${src}${extra}.`;
+  const names = (xs: NodeRef[]) => list(xs);
+  const levelNames = ["L1-live (potentially firable)", "L2-live", "L3-live", "L4-live"];
+  for (let k = 0; k < 3; k++) {
+    const bad = d.transitions.filter((x) => x.levels[k] === "no").map((x) => x.transition);
+    const texts = [
+      ["every transition can fire at least once", `${names(bad)} can never fire`],
+      ["every transition can fire as often as wanted (k times, for every k)", `${names(bad)} can fire only a bounded number of times`],
+      ["every transition can occur infinitely often in some firing sequence", `${names(bad)} cannot occur infinitely often in any firing sequence`],
+    ][k];
+    add(
+      `liveL${k + 1}`,
+      "behaviour",
+      levelNames[k],
+      ["Every transition can fire at least once (no dead transitions).", "Every transition can fire k times, for every k.", "Every transition appears infinitely often in some firing sequence."][k],
+      d.netLevels[k],
+      why(d.netLevels[k], `${texts[0]} (from ${src}).`, `${texts[1]}.`),
+      d.netLevels[k] === "no" ? bad : [],
+    );
+  }
+  add("persistent", "behaviour", "Persistent", "An enabled transition can only be disabled by firing it (the same as dynamic conflict freeness).", d.persistent, d.persistent === "yes" ? "Yes: no firing ever disables another enabled transition." : d.persistent === "no" ? "No: see dynamic conflict freeness (DCF) for a marking where one firing disables another enabled transition." : `${word(d.persistent)}: as for dynamic conflict freeness (DCF).`);
+  add("repetitive", "behaviour", "Repetitive", "Some firing sequence contains every transition infinitely often.", d.repetitive, why(d.repetitive, "a cycle of reachable markings fires every transition, and it can be repeated forever.", "no cycle that can repeat forever fires every transition."));
+  add("partiallyRepetitive", "behaviour", "Partially repetitive", "Some firing sequence is infinite (some transition occurs infinitely often).", d.partiallyRepetitive, why(d.partiallyRepetitive, "some cycle of reachable markings can be repeated forever.", "every firing sequence is finite."));
+  add("consistentB", "behaviour", "Consistent (behavioural)", "Some reachable marking comes back after a firing sequence that contains every transition.", d.consistent, why(d.consistent, "some cycle of reachable markings fires every transition and returns to where it started.", "no firing sequence through every transition returns to its starting marking."));
+  add("partiallyConsistentB", "behaviour", "Partially consistent (behavioural)", "Some reachable marking comes back after a non-empty firing sequence.", d.partiallyConsistent, why(d.partiallyConsistent, "some reachable marking can be reproduced.", "no reachable marking can ever be reproduced."));
+  const w = d.conservationWeights;
+  const wText = w ? Object.entries(w).filter(([, v]) => v).map(([id, v]) => `${v === 1 ? "" : `${v}·`}${placeName(id)}`) : [];
+  add(
+    "conservativeB",
+    "behaviour",
+    "Conservative (behavioural)",
+    "A positively weighted token sum stays the same in every reachable marking.",
+    d.conservative,
+    why(d.conservative, `the weighted sum ${wText.length && wText.length <= 8 ? wText.join(" + ") : "with weights found by the analysis"} never changes.`, d.source === "coverability" ? "the net is unbounded, so no positively weighted token sum can stay the same." : "the reachable markings change every positively weighted token sum."),
+  );
+  add("strictlyConservative", "behaviour", "Strictly conservative", "The total number of tokens stays the same in every reachable marking.", d.strictlyConservative, why(d.strictlyConservative, "every firing keeps the total number of tokens.", "some firing changes the total number of tokens."));
+  const up = d.unfairPair;
+  add(
+    "bFair",
+    "behaviour",
+    "B-fair (bounded fair)",
+    "No transition can fire arbitrarily often while another one does not fire at all.",
+    d.bFair,
+    why(d.bFair, "every pair of transitions is in the bounded-fair relation.", up ? `${up[0].name} can fire arbitrarily often while ${up[1].name} does not fire.` : "some transition can fire arbitrarily often while another does not."),
+    d.bFair === "no" && up ? [up[0], up[1]] : [],
+  );
+  add("unconditionallyFair", "behaviour", "Unconditionally fair", "Every infinite firing sequence contains every transition infinitely often.", d.unconditionallyFair, why(d.unconditionallyFair, "every infinite firing sequence fires every transition infinitely often (or every firing sequence is finite).", "some infinite firing sequence leaves a transition out from some point on."));
+}
+
+/** Summary lines for the matrix-based structural properties. */
+function addAlgebra(add: Add, a: StructuralAnalysis, places: number): void {
+  const na = a.structurallyBounded === "n/a" && a.structurallyConservative === "n/a";
+  const naText = "n/a: the incidence matrix does not describe the firing rule of this net (reset arcs, marking-dependent weights or modulo arithmetic), or the net is empty or has errors.";
+  const t = (s: Status, yes: string, no: string, unknown = "not decided within the limits of the analysis, or the net's inhibitor arcs, equal arcs or capacities stop the matrix argument from deciding it."): string =>
+    na ? naText : s === "yes" ? `Yes: ${yes}` : s === "no" ? `No: ${no}` : s === "n/a" ? "n/a" : `Unknown: ${unknown}`;
+  const wb = a.boundednessWitness ? Object.values(a.boundednessWitness) : [];
+  add("structurallyBounded", "invariants", "Structurally bounded", "Bounded for every initial marking: some positive weighting y of the places has yᵀC ≤ 0.", a.structurallyBounded, t(a.structurallyBounded, `a positive weighting of the places (${wb.length <= 12 ? wb.join(", ") : "found by the analysis"}) never grows when a transition fires.`, `${list(a.structurallyUnboundedPlaces)} can grow without bound for some initial marking.`), a.structurallyUnboundedPlaces);
+  add("structurallyConservative", "invariants", "Structurally conservative", "Some positive weighting y of the places has yᵀC = 0 (a P-invariant covering every place).", a.structurallyConservative, t(a.structurallyConservative, "a positive P-invariant exists.", a.partiallyStructurallyConservative === "yes" ? "only some places are covered by P-invariants (the net is partially conservative)." : "the net has no P-invariant at all."));
+  add("structurallyRepetitive", "invariants", "Structurally repetitive", "Some firing count vector x > 0 has C·x ≥ 0: from a large enough marking every transition can fire infinitely often.", a.structurallyRepetitive, t(a.structurallyRepetitive, "a positive x with C·x ≥ 0 exists.", a.nonRepetitiveTransitions.length ? `${list(a.nonRepetitiveTransitions)} can fire only finitely often from any marking.` : "no positive x with C·x ≥ 0 exists."), a.nonRepetitiveTransitions);
+  add("structurallyConsistent", "invariants", "Structurally consistent", "Some firing count vector x > 0 has C·x = 0 (a T-invariant covering every transition).", a.structurallyConsistent, t(a.structurallyConsistent, "a positive T-invariant exists.", a.partiallyStructurallyConsistent === "yes" ? "only some transitions are covered by T-invariants (the net is partially consistent)." : "the net has no T-invariant at all."));
+  add("structurallyLive", "invariants", "Structurally live", "Some initial marking makes the net live.", a.structurallyLive, t(a.structurallyLive, "some initial marking makes every transition live.", "a weighted token sum that never grows is lowered by some transition, so that transition can fire only finitely often from any marking (or, for a free-choice net, a minimal siphon contains no trap).", "the necessary condition holds, but liveness for some marking is only decided for free-choice nets (Commoner's theorem)."));
+  add("controllabilityRank", "invariants", "Rank condition for controllability", "rank(C) equals the number of places, which complete controllability needs.", a.controllabilityRank, na ? naText : `${word(a.controllabilityRank)}: rank(C) = ${a.rank}${a.rankExact ? "" : " (computed modulo large primes)"}, the net has ${places} place${places === 1 ? "" : "s"}; ${a.pInvariantDimension} independent P-invariant direction${a.pInvariantDimension === 1 ? "" : "s"} and ${a.tInvariantDimension} T-invariant direction${a.tInvariantDimension === 1 ? "" : "s"}.`);
+  add("completelyControllable", "invariants", "Completely controllable", "Every marking can be reached from every other marking.", a.completelyControllable, t(a.completelyControllable, "every place has a transition that only adds one token to it and one that only removes one.", a.controllabilityRank === "no" ? "rank(C) is smaller than the number of places." : "from the empty marking no transition can fire.", "the rank condition holds, but it is only necessary."));
+  add("structurallyBFair", "invariants", "Structurally B-fair", "B-fair for every initial marking.", a.structurallyBFair, t(a.structurallyBFair, "no transition can fire arbitrarily often without every other one, from any marking.", "for some initial marking a transition can fire arbitrarily often while another does not fire."));
+}
+
 /**
  * Charlie-style qualitative analysis of a net: incidence matrix, P/T-invariants, structural
  * properties, siphons and traps, and behavioural properties from the state space. Coloured nets
@@ -78,7 +166,11 @@ export function analyseNet(net: Net, opts: AnalysisOptions = {}): AnalysisReport
   checkAbort(signal);
   const siphonsTraps = siphonsAndTraps(pt, { signal, graph });
   checkAbort(signal);
-  const { result: behaviour, notes } = analyseBehaviour(pt, opts, { invariants, structure, siphonsTraps });
+  const { result: behaviour, notes, space } = analyseBehaviour(pt, opts, { invariants, structure, siphonsTraps });
+  checkAbort(signal);
+  const dynamics = analyseDynamics(pt, behaviour, space, incidence.rows, { maxStates: opts.maxStates, signal });
+  checkAbort(signal);
+  const algebra = analyseAlgebra(pt, incidence.rows, structure, siphonsTraps, { signal });
 
   const summary: SummaryItem[] = [];
   const add = (key: string, group: SummaryGroup, label: string, description: string, status: Status, explanation: string, highlight: NodeRef[] = []) => {
@@ -100,6 +192,7 @@ export function analyseNet(net: Net, opts: AnalysisOptions = {}): AnalysisReport
   add("dynamicConflictFree", "behaviour", "Dynamic conflict free (DCF)", "No reachable marking enables two transitions such that firing one disables the other.", behaviour.dynamicConflictFree, notes.dynamicConflictFree, notes.highlight.dynamicConflictFree);
   add("reversible", "behaviour", "Reversible", "The initial marking can be reached again from every reachable marking.", behaviour.reversible, notes.reversible);
   add("homeStates", "behaviour", "Has home states", "Some marking can be reached from every reachable marking.", behaviour.hasHomeStates, notes.hasHomeStates);
+  addDynamics(add, dynamics, pt.places);
 
   // Invariants.
   const { p: pinv, t: tinv } = invariants;
@@ -113,6 +206,7 @@ export function analyseNet(net: Net, opts: AnalysisOptions = {}): AnalysisReport
   add("cpi", "invariants", "Covered by P-invariants (CPI)", "Every place has a weighted token sum that never changes.", cpiS, cpiE, cpiS === "no" ? pinv.uncovered : []);
   const [ctiS, ctiE] = cover(tinv, "transition", "");
   add("cti", "invariants", "Covered by T-invariants (CTI, consistent)", "Some firing sequence using every transition reproduces its starting marking.", ctiS, ctiE, ctiS === "no" ? tinv.uncovered : []);
+  addAlgebra(add, algebra, pt.places.length);
 
   // Structure.
   for (const [key, label, description] of STRUCTURAL) {
@@ -155,6 +249,8 @@ export function analyseNet(net: Net, opts: AnalysisOptions = {}): AnalysisReport
     structure,
     siphonsTraps,
     behaviour,
+    dynamics,
+    algebra,
     summary,
   };
 }

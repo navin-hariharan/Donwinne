@@ -42,10 +42,21 @@ export function exportLola(net: Net): string {
     const consume = new Map<string, number>();
     const produce = new Map<string, number>();
     const add = (m: Map<string, number>, p: string, w: number) => m.set(p, (m.get(p) ?? 0) + w);
+    // A read arc of weight r and normal arcs of total weight n on the same place need max(n, r)
+    // tokens and remove n (each arc is checked on its own), so consume max(n, r) and give back the
+    // difference. Consuming n + r would wrongly need both.
+    const normal = new Map<string, number>();
+    const read = new Map<string, number>();
     for (const { place, arc } of pre) {
       const w = evalCount(net, weightOf(arc), `The weight of an arc of "${t.name}"`);
-      add(consume, place, w);
-      if (arc.kind === "read") add(produce, place, w);
+      if (arc.kind === "read") read.set(place, Math.max(read.get(place) ?? 0, w));
+      else add(normal, place, w);
+    }
+    for (const p of new Set([...normal.keys(), ...read.keys()])) {
+      const n = normal.get(p) ?? 0;
+      const c = Math.max(n, read.get(p) ?? 0);
+      add(consume, p, c);
+      if (c > n) add(produce, p, c - n);
     }
     for (const { place, arc } of post) add(produce, place, evalCount(net, weightOf(arc), `The weight of an arc of "${t.name}"`));
     const list = (m: Map<string, number>) => [...m].filter(([, w]) => w > 0).map(([p, w]) => `${p} : ${w}`).join(", ");

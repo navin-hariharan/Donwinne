@@ -123,11 +123,16 @@ jobs:
         with:
           name: installers-${{ matrix.name }}
           if-no-files-found: error
+          # latest*.yml, the .blockmap files and the macOS .zip are what installed copies read to
+          # update themselves (Help > Check for Updates…); they must be in the release too.
           path: |
             apps/desktop/release/*.exe
             apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
             apps/desktop/release/*.AppImage
             apps/desktop/release/*.deb
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest*.yml
 
   release:
     name: Publish the release
@@ -159,5 +164,7 @@ jobs:
             | macOS (Apple silicon) | `donwinne-${{ needs.version.outputs.version }}-mac-arm64.dmg` |
             | macOS (Intel) | `donwinne-${{ needs.version.outputs.version }}-mac-x64.dmg` |
             | Linux (x64) | `donwinne-${{ needs.version.outputs.version }}-linux-x86_64.AppImage` or `donwinne-${{ needs.version.outputs.version }}-linux-amd64.deb` |
+
+            Already installed? Donwinne updates itself: it downloads the new version in the background and installs it when you restart (Help > Check for Updates…). The `.yml`, `.blockmap` and macOS `.zip` files are for those updates.
           files: installers/*
           fail_on_unmatched_files: true

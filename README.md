@@ -16,8 +16,8 @@
   <img alt="React 18" src="https://img.shields.io/badge/React-18-149eca?logo=react&logoColor=white">
   <img alt="Electron" src="https://img.shields.io/badge/Electron-desktop-47848f?logo=electron&logoColor=white">
   <img alt="Installable web app" src="https://img.shields.io/badge/PWA-works%20offline-5a0fc8">
-  <img alt="Version" src="https://img.shields.io/badge/version-0.4.1-2563eb">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-637%20passing-2da44e">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.4.2-2563eb">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-821%20passing-2da44e">
 </p>
 
 <p align="center">
@@ -211,7 +211,9 @@ See [docs/simulation.md](docs/simulation.md).
 - **Reachability graph**, drawn as a graph (or listed as a table for big ones), with its dead states and the bound of each place; click a state to replay the path to it, and export it as SVG, PNG, GraphViz DOT or CSV.
 - **Net properties** in the style of Charlie: bounded, safe, k-bounded, deadlock free (with the shortest path to a deadlock), dead states, live, dead transitions, dynamic conflict free, reversible and home states.
 - **Invariants:** P- and T-invariants, covering by them (CPI, CTI), minimal siphons and traps, and the siphon-trap property.
-- **Structural properties:** state machine, marked graph, free choice, extended free choice, extended simple, ordinary, homogeneous, pure, conservative, connected, strongly connected and static conflict free, with the incidence matrix.
+- **Liveness levels and fairness:** L0 to L4 for every transition, persistence, repetitivity, consistency, conservation (with its weights), B-fairness with its classes, unconditional fairness and the synchronic distance of every pair of transitions, from the reachability graph or, for unbounded nets, the coverability graph.
+- **Is this marking reachable?** The state equation first (no solution proves it unreachable), then the shortest firing sequence.
+- **Structural properties:** state machine, marked graph, free choice, extended free choice, extended simple, ordinary, homogeneous, pure, conservative, connected, strongly connected, static conflict free and directed circuits, with the incidence matrix; and, decided exactly from the matrix for every initial marking, structural boundedness, conservation, repetitivity, consistency, liveness, controllability and B-fairness.
 - **Show buttons** that highlight the places or transitions of any result on the canvas, and a text report you can save.
 - **Unfolding** of coloured nets to uncoloured ones (Analyse > Unfold to an uncoloured net).
 - **Slicing** (Analyse > Slice the net): the twelve algorithms of the survey by Khan, Konios and Guelfi (2018), from Rakow's CTL\*-X and safety slicing to abstract, backward, forward, Wangyang, concerned and trace slicing, on every discrete net class, with the slice highlighted, opened as a net or exported to PNML.
@@ -475,7 +477,7 @@ The thesis verifies its two case studies in chapter 7. Donwinne's test suite
 
 One thing does not reproduce: the thesis's "maximum concurrency" drawings of the case studies (52 states and 87
 edges for the garage, 82 and 130 for the conference room) are smaller than the complete colour-blind maximal-step graphs
-Donwinne builds (229 and 1,990; 314 and 1,620). The thesis draws them for illustration only. Every difference is explained,
+Donwinne builds (229 and 1,990; 366 and 1,740). The thesis draws them for illustration only. Every difference is explained,
 and the steps to re-run each check yourself in the app are given, in
 [docs/ambient-petri-nets.md#reproducing-the-thesiss-results](docs/ambient-petri-nets.md#reproducing-the-thesiss-results).
 
@@ -549,6 +551,12 @@ builds the installers on Linux, Windows and macOS, and creates the release `v<ve
 So to release, raise the version (in every `package.json` and in
 `packages/editor/src/version.ts`; a test checks they agree) and push. Signing is optional: add the
 secrets listed at the top of the workflow to sign and notarise.
+
+Installed desktop apps (0.4.2 and newer) update themselves from these releases. Like Discord, they
+download a new version in the background and install it when you restart, with a **Restart Now**
+banner. Under **Help** are **Check for Updates…** and **Install Updates Automatically** (turn it off to
+be asked first). macOS installs updates only into signed builds. Details are in
+[apps/desktop/README.md](apps/desktop/README.md#updates).
 
 ### Installing the web app
 

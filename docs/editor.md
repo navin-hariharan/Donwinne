@@ -185,7 +185,7 @@ In fault trees the palette holds events and gates instead: **Top event**, **Even
 3. **Drop on empty space.** If you release the + handle over empty canvas, Donwinne creates a node of the opposite kind there and connects it: a transition after a place, a place after a transition. Coming from a place, the new arc has the current arc kind. This lets you draw a whole chain with one drag per step. A drag shorter than 12 pixels does nothing.
 4. **Or use the arc tool.** With the arc tool, drag from one node to another, or click the first node and then the second. Clicks on empty space in between add bend points.
 
-An arc must join a place and a transition; if it does not, a message explains why ("Arcs must join a place and a transition"). Drawing an arc that already exists (same ends, same kind) does not add a second one: Donwinne selects the existing arc and opens its weight for editing, so you can raise the weight instead. Read, inhibitor, reset and equal arcs must go from a place to a transition; modifier arcs need a stochastic, continuous or hybrid net. Freestyle nets have no such rules.
+An arc must join a place and a transition; if it does not, a message explains why ("Arcs must join a place and a transition"). Drawing an arc that already exists (same ends, same kind) does not add a second one: Donwinne selects the existing arc and opens its weight for editing, so you can raise the weight instead. Read, inhibitor, reset and equal arcs must go from a place to a transition; modifier arcs need a stochastic, continuous or hybrid net; other kinds the class does not have (for example a read arc in an APN) are refused with a message. Freestyle nets have no such rules.
 
 New arcs get a sensible inscription: `1` for normal arcs, empty for reset arcs, and in coloured nets the dot token or a variable of the place's colour set.
 
@@ -257,9 +257,9 @@ The properties panel offers the same **Arrange** buttons and colours for a multi
 
 ## Copy, cut, paste and duplicate
 
-**Copy** (Ctrl+C) remembers the selected places, transitions, notes and fault tree nodes, plus the arcs between them. **Paste** (Ctrl+V) puts a copy on the current page, centred on the mouse pointer (pasting again without moving the mouse steps it down and to the right, so copies do not stack); **Duplicate** (Ctrl+D) copies and pastes in one go, shifted by 30 units. Pasted nodes whose names are already taken get the first free numbered name, so `buffer` becomes `buffer_2`, then `buffer_3`, and a copy of `buffer_2` becomes `buffer_3` rather than `buffer_2_2`. Logical places keep their names, because a logical place is meant to appear several times.
+**Copy** (Ctrl+C) remembers the selected places, transitions, notes and fault tree nodes, plus the arcs (or fault tree connections) between them. A copied subnet takes its whole contents with it. **Paste** (Ctrl+V) puts a copy on the current page, centred on the mouse pointer (pasting again without moving the mouse steps it down and to the right, so copies do not stack); **Duplicate** (Ctrl+D) copies and pastes in one go, shifted by 30 units. Pasted nodes whose names are already taken get the first free numbered name, so `buffer` becomes `buffer_2`, then `buffer_3`, and a copy of `buffer_2` becomes `buffer_3` rather than `buffer_2_2`. Logical places keep their names, because a logical place is meant to appear several times.
 
-The clipboard lives inside the app: it works between pages and between models in the same window, but not with other programs. Connections between fault tree nodes are not copied.
+The clipboard lives inside the app: it works between pages and between models in the same window, but not with other programs. Petri net nodes cannot be pasted into a fault tree, nor fault tree nodes into a Petri net.
 
 ## Auto layout
 

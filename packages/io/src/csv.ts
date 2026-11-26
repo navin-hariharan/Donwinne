@@ -22,7 +22,13 @@ export function exportCsvDeclarations(net: Net): string {
     throw new ExportError("Only Petri nets have places, rates and constants to export as CSV.");
   const out: string[] = [];
   const seen = new Set<string>();
-  const places = realPlaces(net).filter((p) => !(p.logical && seen.has(p.name)) && seen.add(p.name));
+  // Logical places appear once per name; ordinary places always appear.
+  const places = realPlaces(net).filter((p) => {
+    if (!p.logical) return true;
+    if (seen.has(p.name)) return false;
+    seen.add(p.name);
+    return true;
+  });
   out.push("Place;Marking", ...places.map((p) => `${cell(p.name || p.id)};${cell(p.marking.trim() || "0")}`), "");
   if (timeBase(net.netClass))
     out.push(

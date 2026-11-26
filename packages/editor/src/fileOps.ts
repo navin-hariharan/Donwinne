@@ -1,6 +1,6 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { NET_CLASS_LABELS, Net, NetClass, isColoured, isFaultTree, timeBase } from "@pns/core";
+import { NET_CLASS_LABELS, Net, NetClass, dualNet, isColoured, isFaultTree, reverseNet, timeBase } from "@pns/core";
 import * as io from "@pns/io";
 import { exportPnml, importPnmlWithWarnings, parseNet, serializeNet } from "@pns/io";
 import { exportDnf, importDnf } from "@pns/ft";
@@ -434,6 +434,20 @@ export function netTikz(full: Net): string {
 }
 
 /** Snoopy's "unfold": turn a coloured net into the equivalent uncoloured net, opened as a new model. */
+/** Open the reversed net (every arc turned round) or the dual net (places and transitions swapped) as a new model. */
+export function cmdTransform(kind: "reverse" | "dual"): void {
+  const s = useStore.getState();
+  if (s.dirty && !window.confirm(`The ${kind === "reverse" ? "reversed" : "dual"} net opens as a new model. Discard unsaved changes to this one?`)) return;
+  try {
+    const net = kind === "reverse" ? reverseNet(s.net) : dualNet(s.net);
+    loadNet(net, null);
+    useStore.setState({ dirty: true });
+    toast(kind === "reverse" ? "Opened the reversed net: every arc points the other way" : "Opened the dual net: places and transitions swapped, arcs reversed, no marking");
+  } catch (e) {
+    toast(`Could not build the ${kind === "reverse" ? "reversed" : "dual"} net: ${(e as Error).message}`, "error");
+  }
+}
+
 export async function cmdUnfold(): Promise<void> {
   const s = useStore.getState();
   if (!isColoured(s.net.netClass)) {

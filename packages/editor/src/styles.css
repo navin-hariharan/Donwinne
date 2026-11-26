@@ -863,6 +863,58 @@ kbd {
   color: var(--status-ink);
 }
 
+/* Desktop update banner: bottom right, clear of the toast and the canvas controls. */
+.update-banner {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  /* Above dialogs (100), so an update is seen whatever is open; below the drag preview (120). */
+  z-index: 110;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 10px 12px 10px 14px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.update-banner.error {
+  border-color: var(--error);
+}
+
+.update-text {
+  flex: 1 1 220px;
+}
+
+.update-buttons {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.update-progress {
+  display: block;
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 2px;
+  background: var(--accent-soft);
+  overflow: hidden;
+}
+
+.update-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
 @media (max-width: 900px) {
   .props {
     width: min(var(--props-w, 240px), 240px);

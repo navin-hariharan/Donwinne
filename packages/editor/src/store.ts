@@ -523,6 +523,7 @@ export function ungroupSubnet(coarseId: string) {
     arcs: n.arcs.filter((a) => a.source !== coarseId && a.target !== coarseId),
     notes: n.notes?.map(re),
   }));
+  if (get().page === coarseId) set({ page: up ?? null, selection: [] });
 }
 
 // ---------- adding things ----------
@@ -643,6 +644,9 @@ export function addArc(source: string, target: string, points: Point[] = [], kin
   const kind = kindOverride ?? s.arcKind;
   if (kind !== "normal" && !fromPlace) return `${/^[aeiou]/.test(kind) ? "An" : "A"} ${kind} arc must go from a place to a transition`;
   if (kind === "modifier" && !arcKindsFor(net.netClass).includes("modifier")) return "Modifier arcs need a stochastic, continuous or hybrid net";
+  // A P/T net becomes an extended net instead (below); other classes refuse kinds they don't have.
+  if (net.netClass !== "pt" && !arcKindsFor(net.netClass).includes(kind))
+    return `${kind[0].toUpperCase()}${kind.slice(1)} arcs are not allowed in this net class (allowed: ${arcKindsFor(net.netClass).join(", ")})`;
   const existing = net.arcs.find((a) => a.source === source && a.target === target && a.kind === kind);
   if (existing) {
     // Drawing the same arc again means "change this arc": select it and edit its weight or inscription.
@@ -697,14 +701,47 @@ export function addConnectedNode(fromId: string, at: Point): void {
   const id = fromPlace ? addTransition(at.x, at.y) : addPlace(at.x, at.y);
   const s = get();
   const kind = fromPlace ? s.arcKind : "normal";
-  addArc(fromId, id, [], kind);
+  const err = addArc(fromId, id, [], kind);
+  if (err) toast(err, "error");
   set({ selection: [id] });
 }
 
 // ---------- updating ----------
 
+/** What logical (fusion) places of one name share: the firing rule reads them from one slot. */
+const LOGICAL_SHARED = ["marking", "capacity", "colourSet"] as const;
+
+/**
+ * Keep logical places consistent after the places `ids` changed: a shared field edited on one copy
+ * goes to every copy, and a place that has just become logical takes the group's values (otherwise
+ * whichever copy comes first in the file would silently decide the marking).
+ */
+function syncLogical(before: Net, after: Net, ids: Set<string>): Net {
+  const old = new Map(before.places.map((p) => [p.id, p]));
+  let places = after.places;
+  for (const id of ids) {
+    const p = places.find((x) => x.id === id);
+    if (!p?.logical || p.coarse) continue;
+    const prev = old.get(id);
+    const group = places.filter((x) => x.id !== id && x.logical && !x.coarse && x.name === p.name);
+    if (!group.length) continue;
+    if (!prev?.logical) {
+      const g = group[0];
+      places = places.map((x) => (x.id === id ? { ...x, marking: g.marking, capacity: g.capacity, colourSet: g.colourSet } : x));
+      continue;
+    }
+    const changed = LOGICAL_SHARED.filter((k) => prev[k] !== p[k]);
+    if (!changed.length) continue;
+    const shared: Partial<Place> = {};
+    for (const k of changed) (shared as Record<string, unknown>)[k] = p[k];
+    const gids = new Set(group.map((x) => x.id));
+    places = places.map((x) => (gids.has(x.id) ? { ...x, ...shared } : x));
+  }
+  return places === after.places ? after : { ...after, places };
+}
+
 export function updatePlace(id: string, patch: Partial<Place>, coalesce?: string) {
-  edit((net) => ({ ...net, places: net.places.map((p) => (p.id === id ? { ...p, ...patch } : p)) }), coalesce);
+  edit((net) => syncLogical(net, { ...net, places: net.places.map((p) => (p.id === id ? { ...p, ...patch } : p)) }, new Set([id])), coalesce);
 }
 
 export function updateTransition(id: string, patch: Partial<Transition>, coalesce?: string) {
@@ -726,7 +763,7 @@ const patched = <T,>(x: T, patch: Patch<T>): T => ({ ...x, ...(typeof patch === 
 /** Change several places in one undo step (the properties panel's multi-edit). */
 export function updatePlaces(ids: string[], patch: Patch<Place>, coalesce?: string) {
   const idSet = new Set(ids);
-  edit((net) => ({ ...net, places: net.places.map((p) => (idSet.has(p.id) ? patched(p, patch) : p)) }), coalesce);
+  edit((net) => syncLogical(net, { ...net, places: net.places.map((p) => (idSet.has(p.id) ? patched(p, patch) : p)) }, idSet), coalesce);
 }
 
 export function updateTransitions(ids: string[], patch: Patch<Transition>, coalesce?: string) {
@@ -880,7 +917,8 @@ let clipboard: Clipboard | null = null;
 
 export function copySelection() {
   const s = get();
-  const ids = new Set(s.selection);
+  // A subnet is copied with everything inside it, as deleting it deletes its contents.
+  const ids = descendants(s.net, new Set(s.selection));
   const places = s.net.places.filter((p) => ids.has(p.id));
   const transitions = s.net.transitions.filter((t) => ids.has(t.id));
   const notes = (s.net.notes ?? []).filter((n) => ids.has(n.id));
@@ -925,7 +963,18 @@ export function paste(offset = 40, at: Point | null = get().pointer) {
   const s = get();
   const net = s.net;
   const page = s.page ?? undefined;
-  const nodes: Point[] = [...clipboard.places, ...clipboard.transitions, ...clipboard.notes, ...clipboard.ftNodes];
+  // Only what this kind of model can hold: Petri net nodes and arcs, or fault tree nodes (notes fit both).
+  const ftTarget = isFaultTree(net.netClass);
+  const clip: Clipboard = ftTarget
+    ? { ...clipboard, places: [], transitions: [], arcs: [] }
+    : { ...clipboard, ftNodes: [], ftEdges: [] };
+  // The topmost copied nodes go on the current page; nodes inside a copied subnet stay inside its copy.
+  const copiedIds = new Set([...clip.places, ...clip.transitions].map((n) => n.id));
+  const parentOf = (parent: string | undefined) => (parent && copiedIds.has(parent) ? map.get(parent) : page);
+  const nodes: Point[] = [...clip.places, ...clip.transitions, ...clip.notes, ...clip.ftNodes].filter(
+    (n) => !(n as { parent?: string }).parent || !copiedIds.has((n as { parent?: string }).parent!),
+  );
+  if (!nodes.length) return;
   let dx = offset;
   let dy = offset;
   if (at && nodes.length && !(lastPasteAt && lastPasteAt.x === at.x && lastPasteAt.y === at.y)) {
@@ -942,34 +991,31 @@ export function paste(offset = 40, at: Point | null = get().pointer) {
     names.add(n);
     return n;
   };
-  const places = clipboard.places.map((p) => {
-    const id = newId("p");
-    map.set(p.id, id);
+  // New ids first, so that a node can find the copy of the subnet it sits in, whatever the order.
+  for (const p of clip.places) map.set(p.id, newId("p"));
+  for (const t of clip.transitions) map.set(t.id, newId("t"));
+  const places = clip.places.map((p) => {
     // Logical (fusion) places share their marking by name, so a copy keeps it.
-    return { ...move(p), id, name: p.logical ? p.name : fresh(p.name), parent: page };
+    return { ...move(p), id: map.get(p.id)!, name: p.logical ? p.name : fresh(p.name), parent: parentOf(p.parent) };
   });
-  const transitions = clipboard.transitions.map((t) => {
-    const id = newId("t");
-    map.set(t.id, id);
-    return { ...move(t), id, name: fresh(t.name), parent: page };
-  });
-  const arcs = clipboard.arcs.map((a) => ({
+  const transitions = clip.transitions.map((t) => ({ ...move(t), id: map.get(t.id)!, name: fresh(t.name), parent: parentOf(t.parent) }));
+  const arcs = clip.arcs.map((a) => ({
     ...a,
     id: newId("a"),
     source: map.get(a.source)!,
     target: map.get(a.target)!,
     points: a.points?.map(move),
   }));
-  const notes = clipboard.notes.map((n) => ({ ...move(n), id: newId("n"), parent: page }));
+  const notes = clip.notes.map((n) => ({ ...move(n), id: newId("n"), parent: parentOf(n.parent) }));
   const ftNames = new Set((net.faultTree?.nodes ?? []).map((n) => n.name));
-  const ftNodes = clipboard.ftNodes.map((n) => {
+  const ftNodes = clip.ftNodes.map((n) => {
     const id = newId("f");
     map.set(n.id, id);
     const name = copyName(n.name, ftNames);
     ftNames.add(name);
     return { ...move(n), id, name, parent: page };
   });
-  const ftEdges = clipboard.ftEdges.map((e) => ({
+  const ftEdges = clip.ftEdges.map((e) => ({
     ...e,
     id: newId("e"),
     source: map.get(e.source)!,
@@ -985,8 +1031,11 @@ export function paste(offset = 40, at: Point | null = get().pointer) {
     faultTree:
       ftNodes.length && n.faultTree ? { ...n.faultTree, nodes: [...n.faultTree.nodes, ...ftNodes], edges: [...n.faultTree.edges, ...ftEdges] } : n.faultTree,
   }));
-  clipboard = { places, transitions, arcs, notes, ftNodes, ftEdges };
-  set({ selection: [...places, ...transitions, ...notes, ...ftNodes].map((n) => n.id) });
+  // The next paste cascades from this copy; what this model could not take stays as it was.
+  clipboard = ftTarget
+    ? { ...clipboard, notes, ftNodes, ftEdges }
+    : { ...clipboard, places, transitions, arcs, notes };
+  set({ selection: [...places, ...transitions, ...notes, ...ftNodes].filter((n) => (n.parent ?? undefined) === page).map((n) => n.id) });
 }
 
 export function duplicateSelection() {
@@ -1086,7 +1135,9 @@ export function setNetClass(netClass: NetClass) {
     let transitions = n.transitions;
     const wasCol = isColoured(n.netClass);
     const nowCol = isColoured(netClass);
-    if (nowCol && !declarations.colourSets.length) declarations = { ...declarations, colourSets: [{ name: "Dot", type: "dot" }] };
+    // Places get the Dot set below, so it must exist even when other colour sets were kept.
+    if (nowCol && !wasCol && !declarations.colourSets.some((c) => c.name === "Dot"))
+      declarations = { ...declarations, colourSets: [{ name: "Dot", type: "dot" }, ...declarations.colourSets] };
     if (nowCol && !wasCol) places = places.map((p) => ({ ...p, colourSet: p.colourSet ?? "Dot" }));
     if (!nowCol && wasCol) {
       places = places.map((p) => ({ ...p, colourSet: undefined, marking: /^\s*[\d.]*\s*$/.test(p.marking) ? p.marking : "" }));
@@ -1104,12 +1155,14 @@ export function setNetClass(netClass: NetClass) {
     if (base === "continuous") places = places.map((p) => ({ ...p, continuous: true }));
     return { ...n, netClass, declarations, places, arcs, transitions, modulus: netClass === "modulo" ? n.modulus ?? 2 : n.modulus };
   });
-  if (get().arcKind === "modifier" && !arcKindsFor(netClass).includes("modifier")) set({ arcKind: "normal" });
+  // A P/T net keeps the chosen kind: drawing a read arc there turns it into an extended net (as documented).
+  if (netClass !== "pt" && !arcKindsFor(netClass).includes(get().arcKind)) set({ arcKind: "normal" });
 }
 
 export function loadNet(net: Net, fileName: string | null, filePath: string | null = null, fileHandle: unknown = null) {
   stopSimulation();
-  set({ net, fileName, filePath, fileHandle, dirty: false, past: [], future: [], selection: [], page: null, dialog: null, fitRequest: get().fitRequest + 1 });
+  // The arc kind chosen in the previous model may not exist in this one (e.g. a reset arc in an APN).
+  set({ net, fileName, filePath, fileHandle, dirty: false, past: [], future: [], selection: [], page: null, dialog: null, arcKind: "normal", fitRequest: get().fitRequest + 1 });
 }
 
 export function newNet(netClass: NetClass) {
@@ -1207,7 +1260,8 @@ export function fireTransition(transitionId: string, binding: Binding) {
       const nt = timedFire(ts, t.index, binding);
       step = { marking: nt.marking, label: `${label} at t=${fmtTime(nt.time)}`, transitionId, timed: nt };
     } else step = { marking: fire(cn, t.index, binding, M), label, transitionId };
-    set({ sim: [...s.sim.slice(0, s.simIndex + 1), step], simIndex: s.simIndex + 1, bindingPicker: null });
+    // Firing from an earlier step drops the later ones; a trail that started among them restarts here.
+    set({ sim: [...s.sim.slice(0, s.simIndex + 1), step], simIndex: s.simIndex + 1, bindingPicker: null, trailFrom: Math.min(s.trailFrom, s.simIndex) });
     const tr = s.net.transitions.find((x) => x.id === transitionId);
     if (tr) fireListeners.forEach((l) => l(tr));
   } catch (e) {
@@ -1237,7 +1291,16 @@ export function adoptMarking() {
   };
   set({ mode: "edit" });
   edit(() => net);
-  set({ mode: "simulate", sim: [{ marking: M, label: "Initial marking" }], simIndex: 0, trailFrom: 0 });
+  // A timed net restarts its clocks too: time 0, every enabled transition newly enabled.
+  let timed: TimedState | undefined;
+  if (s.sim[s.simIndex]?.timed) {
+    try {
+      timed = timedInit(get().net);
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
+  set({ mode: "simulate", sim: [{ marking: timed?.marking ?? M, label: "Initial marking", timed }], simIndex: 0, trailFrom: 0 });
   toast("Current marking saved as the initial marking");
 }
 
@@ -1258,7 +1321,7 @@ export function advanceTime(d?: number) {
   }
   try {
     const nt = timedDelay(ts, delay);
-    set({ sim: [...s.sim.slice(0, s.simIndex + 1), { marking: nt.marking, label: `wait ${fmtTime(delay)} → t=${fmtTime(nt.time)}`, timed: nt }], simIndex: s.simIndex + 1 });
+    set({ sim: [...s.sim.slice(0, s.simIndex + 1), { marking: nt.marking, label: `wait ${fmtTime(delay)} → t=${fmtTime(nt.time)}`, timed: nt }], simIndex: s.simIndex + 1, trailFrom: Math.min(s.trailFrom, s.simIndex) });
   } catch (e) {
     toast((e as Error).message, "error");
   }

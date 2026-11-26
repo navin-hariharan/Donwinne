@@ -15,7 +15,7 @@
 // the behaviour and are left out.
 
 import { Net } from "@pns/core";
-import { ExportError, arcsOf, assignNames, describeArc, evalCount, evalNumber, fmtNumber, requireArcKinds, requireClass, weightOf } from "./text-common";
+import { ExportError, arcsOf, assignNames, evalCount, evalNumber, fmtNumber, requireArcKinds, requireClass, weightOf } from "./text-common";
 
 const INF = /^(inf|infinity|oo|w|∞)$/i;
 
@@ -51,8 +51,8 @@ export function exportTina(net: Net): string {
         case "read":
           return n > 0 ? [`${p}?${n}`] : [];
         case "inhibitor":
-          if (n < 1) throw new ExportError(`The inhibitor arc ${describeArc(net, e.arc)} has weight ${n}; it can never be satisfied.`);
-          return [`${p}?-${n}`];
+          // Weight 0: Donwinne's firing rule gives the arc no effect (it never blocks).
+          return n > 0 ? [`${p}?-${n}`] : [];
         case "equal":
           return n > 0 ? [`${p}?${n}`, `${p}?-${n + 1}`] : [`${p}?-1`];
         default:

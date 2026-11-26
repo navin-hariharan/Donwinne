@@ -217,7 +217,7 @@ const T: PropertyTemplate[] = [
         F("redirect", "Redirecting advice", "place", "The advice shown at the wrong location."),
         F("goal", "Goal", "place", "The user's goal (e.g. his parking bay)."),
       ]),
-      F("combine", "Combine scenarios", "choice", "all: every scenario must work; any: one is enough (as in the thesis).", { options: ["all", "any"], default: "all" }),
+      F("combine", "Combine scenarios", "choice", "any: one is enough (the thesis joins the scenarios with |, Fig. 7.7); all: every scenario must work.", { options: ["any", "all"], default: "any" }),
     ],
     example: {
       rules: [
@@ -230,7 +230,7 @@ const T: PropertyTemplate[] = [
       const parts = (a.rules as Row[]).map((r) =>
         par(`${par(`${ref(str(r.location))} > 0 & ${ref(str(r.advice))} > 0 -> EX(${ref(str(r.wrong))})`)} & ${par(`${ref(str(r.wrong))} > 0 & ${ref(str(r.redirect))} -> EF(${ref(str(r.goal))})`)}`),
       );
-      const op = (a.combine as string) === "any" ? " | " : " & ";
+      const op = (a.combine as string) === "all" ? " & " : " | ";
       return [{ label: "Goal reachable after ignoring advices", text: `AG(${parts.join(op)})`, expected: true }];
     },
   },
@@ -339,7 +339,7 @@ const T: PropertyTemplate[] = [
       F("before", "Previous location", "place", "Where the user comes from."),
       F("location", "Location", "place", "Where the user arrives."),
       F("tokens", "Tokens at location", "number", "Exact token count at the location (the thesis uses 2); leave empty for 'marked'.", { optional: true }),
-      F("pending", "Sensor places", "places", "Sensor (control) places that are empty until an advice is given."),
+      F("pending", "Sensor places", "places", "Sensor (control) places that are empty until an advice is given (optional).", { optional: true }),
       F("advices", "Advices", "places", "Advices possible at the location."),
       F("next", "Next locations", "places", "Where the advices lead."),
     ],
@@ -367,7 +367,8 @@ const T: PropertyTemplate[] = [
     params: [
       F("before", "Previous location", "place", "Where the user comes from."),
       F("location", "Location", "place", "Where the user arrives."),
-      F("pending", "Sensor places", "places", "Sensor (control) places that are empty until an advice is given."),
+      F("tokens", "Arrived when more than", "number", "The user has arrived when the location holds more than this many tokens (default 0; the conference room uses entering_room > 1).", { optional: true, default: 0 }),
+      F("pending", "Sensor places", "places", "Sensor (control) places that are empty until an advice is given (optional).", { optional: true }),
       F("advices", "Advices", "places", "Advices possible at the location."),
       F("next", "Next locations", "places", "Where the user would move next."),
     ],
@@ -375,7 +376,7 @@ const T: PropertyTemplate[] = [
     build(a) {
       const L = ref(str(a.location as TemplateValue));
       const moved = par(`${ref(str(a.before as TemplateValue))} -> ${L}`);
-      const waiting = and([`${L} > 0`, ...list(a.pending as TemplateValue).map((p) => `${ref(p)} == 0`)]);
+      const waiting = and([`${L} > ${num(a.tokens as TemplateValue) ?? 0}`, ...list(a.pending as TemplateValue).map((p) => `${ref(p)} == 0`)]);
       return [
         { label: "An advice always follows the user's action", text: `AG(${moved} -> AX(${par(waiting)} -> ${or(list(a.advices as TemplateValue).map(ref))}))`, expected: true },
         { label: "Two consecutive user actions (expected to fail)", text: `AG(${moved} -> AX(${L} -> ${or(list(a.next as TemplateValue).map(ref))}))`, expected: false },
@@ -408,7 +409,7 @@ const T: PropertyTemplate[] = [
       ],
       timing: "next",
     },
-    note: "Implication associates to the left in Charlie, so each rule reads ((user action) -> advice) -> refill, as the thesis's formula (Fig. 7.19) was checked; there the later rules were joined to the first rule's last part, while the template conjoins whole rules.",
+    note: "Implication associates to the left in Charlie, so each rule reads ((user action) -> advice) -> refill, as the thesis's formula (Fig. 7.19) was checked; there the later rules were joined to the first rule's last part, while the template conjoins whole rules. One rule of the conference room's formula (Fig. 7.19b, rule 2) is bracketed the other way, (entering -> AF(home)) -> (EF(advice) -> EF(refill)), which is not the same property; the template always uses the left-nested form.",
     build(a) {
       const [A, E] = (a.timing as string) === "eventually" ? ["AF", "EF"] : ["AX", "EX"];
       const parts = (a.rules as Row[]).map((r) =>

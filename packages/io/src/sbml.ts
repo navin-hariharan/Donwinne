@@ -1,6 +1,7 @@
 // SBML Level 2 Version 4 (https://sbml.org): one compartment; places become species, constants
 // parameters, transitions reactions (input places reactants, output places products, read and modifier
 // arcs modifiers). Rates become kinetic laws in MathML; MassAction(k) expands to k * P1^w1 * P2^w2 ...
+// over the normal and read input arcs, as in the simulator.
 // Hybrid nets lose the discrete/continuous distinction (SBML has none). Fixed places become boundary
 // species (no reaction changes them). User functions become function definitions when their bodies
 // only use their parameters, else they are expanded in place. Observers of quantitative nets become
@@ -15,7 +16,8 @@ const MATHML = "http://www.w3.org/1998/Math/MathML";
 
 interface MathCtx {
   names: Names;
-  consumed: Map<string, number>;
+  /** Mass-action factors: one (place, weight) per normal or read input arc, as the simulator counts them. */
+  consumed: [string, number][];
   /** Function parameters in scope (inside a function definition). */
   bound?: Set<string>;
   /** User functions written as function definitions (called with <ci>). */
@@ -29,7 +31,8 @@ export function exportSbml(net: Net): string {
   requireArcKinds(net, "SBML", ["normal", "read", "modifier"]);
   const odd = net.transitions.find((t) => !t.coarse && t.kind && t.kind !== "stochastic" && t.kind !== "continuous");
   if (odd) throw new ExportError(`SBML reactions have kinetic laws only; the ${odd.kind} transition "${odd.name}" cannot be exported.`);
-  const names = assignNames(net);
+  // "compartment" is the id of the model's one compartment; SBML ids must be unique.
+  const names = assignNames(net, undefined, new Set(["compartment"]));
   const quantitative = !!timeBase(net.netClass);
 
   // Function definitions need closed bodies (only parameters) without Snoopy rate functions.
@@ -67,7 +70,7 @@ export function exportSbml(net: Net): string {
       el("math", { xmlns: MATHML }, [
         el("lambda", {}, [
           ...f.params.map((p) => el("bvar", {}, [textEl("ci", ` ${p} `)])),
-          toMathml(f.body, { names, consumed: new Map(), bound: new Set(f.params), defined }),
+          toMathml(f.body, { names, consumed: [], bound: new Set(f.params), defined }),
         ]),
       ]),
     ]),
@@ -80,8 +83,9 @@ export function exportSbml(net: Net): string {
       el("speciesReference", { species: place, stoichiometry: String(evalNumber(net, weightOf(a), `The weight of an arc of "${t.name}"`)) });
     const reactants = pre.filter((e) => e.arc.kind === "normal");
     const modifiers = [...new Set(pre.filter((e) => e.arc.kind === "read" || e.arc.kind === "modifier").map((e) => e.place))];
-    const consumed = new Map<string, number>();
-    for (const e of reactants) consumed.set(e.place, (consumed.get(e.place) ?? 0) + evalNumber(net, weightOf(e.arc), "An arc weight"));
+    const consumed: [string, number][] = pre
+      .filter((e) => e.arc.kind === "normal" || e.arc.kind === "read")
+      .map((e) => [e.place, evalNumber(net, weightOf(e.arc), "An arc weight")]);
     let law: XmlEl | undefined;
     if (quantitative) {
       const rate = prepare(t.rate?.trim() || "MassAction(1)", `The rate of "${t.name}"`);
@@ -108,7 +112,7 @@ export function exportSbml(net: Net): string {
       taken.add(id);
       const e = prepare(o.expression, `The observer "${o.name}"`);
       const ctx: MathCtx =
-        o.kind === "transition" ? { names, consumed: new Map(), defined, laws } : { names, consumed: new Map(), defined };
+        o.kind === "transition" ? { names, consumed: [], defined, laws } : { names, consumed: [], defined };
       observerParams.push(el("parameter", { id, name: o.name, constant: "false" }));
       rules.push(el("assignmentRule", { variable: id }, [el("math", { xmlns: MATHML }, [toMathml(e, ctx)])]));
     }

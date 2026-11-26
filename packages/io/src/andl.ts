@@ -760,13 +760,16 @@ class AndlParser {
         continue;
       }
       for (const c of splitTerms(conditions)) {
-        const m = /^\[\s*([A-Za-z_][A-Za-z0-9_]*)\s*(>=|<|=|>)\s*(.+)\]$/s.exec(c);
+        // "<=" must be tried before "<" (and ">=" before ">"), or "[P <= 2]" reads as "P < (= 2)".
+        const m = /^\[\s*([A-Za-z_][A-Za-z0-9_]*)\s*(>=|<=|<|=|>)\s*(.+)\]$/s.exec(c);
         if (!m) this.fail(`cannot read the condition "${c}" of "${t.name}".`);
         const pid = placeIds.get(m[1]);
         if (!pid) this.fail(`the condition "${c}" of "${t.name}" uses the unknown place "${m[1]}".`);
         const w = m[3].trim();
+        const plusOne = isIntegerText(w) ? String(Number(w) + 1) : `${w} + 1`;
         if (m[2] === ">=") arc(pid, t.id, "read", w);
-        else if (m[2] === ">") arc(pid, t.id, "read", isIntegerText(w) ? String(Number(w) + 1) : `${w} + 1`);
+        else if (m[2] === ">") arc(pid, t.id, "read", plusOne);
+        else if (m[2] === "<=") arc(pid, t.id, "inhibitor", plusOne);
         else if (m[2] === "<") arc(pid, t.id, "inhibitor", w);
         else arc(pid, t.id, "equal", w);
       }

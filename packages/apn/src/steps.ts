@@ -107,20 +107,24 @@ export function stepKey(step: Step): string {
   return step.map(stKey).sort().join("|");
 }
 
-/** Sort a step into canonical order and drop duplicates (a step is a set). Unknown entries throw. */
+/**
+ * Sort a step into canonical order. Unknown entries throw. A structured transition listed twice is
+ * kept twice: the thesis reads such a step by its multiplicities, e.g. {(t,b),(t,b)} needs two black
+ * tokens in each pre-place (Sec. 3.3 and 5.2), so it is not the set {(t,b)}.
+ */
 export function normaliseStep(net: Net | AmbientNet, step: Step): Step {
   const an = asAmbient(net);
   const { byKey } = cands(an);
-  const seen = new Map<string, Cand>();
+  const out: Cand[] = [];
   for (const st of step) {
     const c = byKey.get(stKey(st));
     if (!c) {
       const t = an.transitions.find((x) => x.id === st.transition);
       throw new Error(t ? `${t.name} has no colour mode ${showValue(st.colour)}` : `No transition with id ${st.transition}`);
     }
-    seen.set(stKey(st), c);
+    out.push(c);
   }
-  return [...seen.values()].sort((a, b) => a.order - b.order).map((c) => c.st);
+  return out.sort((a, b) => a.order - b.order).map((c) => c.st);
 }
 
 /** A step in the thesis's notation with transition names, e.g. "{(t3,b),(t4,b)}". */
@@ -211,19 +215,19 @@ function stepOk(an: AmbientNet, chosen: Cand[], M: Marking, rule: "strict" | "we
 
 /**
  * Is the step U enabled at M? (Konios Sec. 3.3 for APNs, Sec. 5.2 for T-APNs.) The empty step is
- * not a step of the CRG and counts as not enabled.
+ * not a step of the CRG and counts as not enabled. Pre(U) and Post(U) sum over the listed structured
+ * transitions with their multiplicities, so a (t, c) listed twice (auto-concurrency) needs its
+ * tokens twice: in Fig. 3.1 "{(t,b),(t,b)} is also not enabled, because of a lack of sufficient
+ * number of black tokens in p1 and p2" (Sec. 3.3; likewise Sec. 5.2). The CRG itself, a step
+ * transition system over 2^T̃ (Def. 5), only uses steps that are sets.
  */
 export function isStepEnabled(net: Net | AmbientNet, M: Marking, step: Step, opts: Pick<EnabledStepsOptions, "capacityRule"> = {}): boolean {
   const an = asAmbient(net);
   if (!step.length) return false;
   const { byKey } = cands(an);
   const chosen: Cand[] = [];
-  const seen = new Set<string>();
   for (const st of step) {
-    const k = stKey(st);
-    if (seen.has(k)) continue;
-    seen.add(k);
-    const c = byKey.get(k);
+    const c = byKey.get(stKey(st));
     if (!c) return false;
     chosen.push(c);
   }

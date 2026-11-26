@@ -5,9 +5,10 @@ import { PropsSheet } from "./PropsSheet";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { BottomPanel } from "./BottomPanel";
 import { useSimulationRunner, stepRandom } from "./simulation";
-import { cmdUnfold, cmdExport, cmdExportPng, cmdExportPnml, cmdExportSvg, cmdImport, cmdImportPnml, cmdNew, cmdOpen, cmdPrint, cmdSave, openText } from "./fileOps";
+import { cmdTransform, cmdUnfold, cmdExport, cmdExportPng, cmdExportPnml, cmdExportSvg, cmdImport, cmdImportPnml, cmdNew, cmdOpen, cmdPrint, cmdSave, openText } from "./fileOps";
 import { Dialogs } from "./Dialogs";
 import { Splitter } from "./Overlays";
+import { UpdateBanner } from "./UpdateBanner";
 import { autoLayout } from "./layout";
 import { parentPage } from "./ContextMenu";
 import {
@@ -27,13 +28,14 @@ import {
   simGoto,
   startSimulation,
   stopSimulation,
+  toast as showToast,
   undo,
   useStore,
 } from "./store";
 import { zoomBy, zoomToSelection } from "./Canvas";
 import { MenuCommand, desktop } from "./platform";
 import { propsDocked, useScreenClass, useVisualViewport } from "./responsive";
-import { ArcKind, isAmbient, isFaultTree } from "@pns/core";
+import { ArcKind, arcKindsFor, isAmbient, isFaultTree } from "@pns/core";
 import { cmdConstructTapn, fireMaximalStep, openAmbientDialog } from "./ambient";
 import { openDocs } from "./docs/DocsDialog";
 
@@ -108,6 +110,9 @@ export function runCommand(c: MenuCommand) {
       return useStore.getState().mode === "edit" ? startSimulation() : stopSimulation();
     case "unfold":
       return void cmdUnfold();
+    case "reverse":
+    case "dual":
+      return cmdTransform(c);
     case "analyse":
       return useStore.setState({ dialog: "analysis" });
     case "elements":
@@ -268,7 +273,13 @@ export function App() {
       else if (k === "a") setTool("arc");
       else if (k === "f") e.shiftKey ? zoomToSelection() : requestFit();
       else if (k === "s") startSimulation();
-      else if (ARC_KEYS[e.key]) useStore.setState({ arcKind: ARC_KEYS[e.key], tool: "arc" });
+      else if (ARC_KEYS[e.key]) {
+        // A P/T net offers every kind but modifier (drawing one makes it an extended net); other classes only their own.
+        const kind = ARC_KEYS[e.key];
+        const ok = s.net.netClass === "pt" ? kind !== "modifier" : arcKindsFor(s.net.netClass).includes(kind);
+        if (ok) useStore.setState({ arcKind: kind, tool: "arc" });
+        else showToast(`${kind[0].toUpperCase()}${kind.slice(1)} arcs are not available in this net class`);
+      }
       else if (e.key.startsWith("Arrow") && s.selection.length) {
         e.preventDefault();
         const step = e.shiftKey ? 10 : 1;
@@ -331,6 +342,7 @@ export function App() {
         )}
       </div>
       <Dialogs />
+      <UpdateBanner />
       {toast && (
         <div className={`toast ${toast.kind}`} role="status" onClick={() => (toast.onClick ? toast.onClick() : useStore.setState({ toast: null }))}>
           {toast.text}

@@ -292,9 +292,13 @@ export function isKBounded(net: Net, k: number, graph: StateGraph = reachability
  * M + Post(U) ≤ K (Sec. 3.3), so every reachable marking stays within K.
  */
 export function isStructurallyBounded(net: Net): Check {
-  const open = net.places.filter((p) => !p.coarse && p.capacity === undefined);
+  // The compiled capacities: in APNs and T-APNs K is a constant function, 1 per colour unless a
+  // place gives another (Sec. 3.2), so a place without an explicit capacity is still bounded.
+  const cap = new Map(compile(net).places.map((p) => [p.id, p.capacity]));
+  const capOf = (p: Net["places"][number]) => cap.get(p.id) ?? p.capacity;
+  const open = net.places.filter((p) => !p.coarse && capOf(p) === undefined);
   if (open.length) return { ok: false, reason: `Not decided: ${open[0].name} has no capacity, so the sufficient condition (every place has a capacity K) does not hold` };
-  const k = Math.max(0, ...net.places.map((p) => p.capacity ?? 0));
+  const k = Math.max(0, ...net.places.filter((p) => !p.coarse).map((p) => capOf(p) ?? 0));
   return { ok: true, reason: `Structurally ${k}-bounded: every place has a capacity, and markings never exceed K (Def. 3, Sec. 3.3, Def. 17)` };
 }
 

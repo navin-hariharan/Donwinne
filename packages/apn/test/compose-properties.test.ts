@@ -162,6 +162,15 @@ describe("Sec. 4.4.1: behavioural properties", () => {
     }
   });
 
+  it("Def. 17: an APN whose places carry no explicit capacity is still structurally bounded, K being 1 per colour (regression)", () => {
+    const { net } = randomComposite(3, 3);
+    const bare = { ...net, places: net.places.map(({ capacity: _c, ...p }) => p) };
+    expect(isStructurallyBounded(bare)).toMatchObject({ ok: true });
+    expect(isStructurallyBounded(bare).reason).toMatch(/Structurally 1-bounded/);
+    // A P/T net without capacities stays undecided.
+    expect(isStructurallyBounded({ ...bare, netClass: "pt" }).ok).toBe(false);
+  });
+
   it("Def. 16: the bound is per structured place (p, c); a place may hold one token of each colour", () => {
     const b = placeBounds(fig49());
     const p1 = fig49().places.find((p) => p.name === "p1")!.id;

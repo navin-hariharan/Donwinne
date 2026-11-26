@@ -3,7 +3,7 @@
 // (the editor's DesktopBridge) plus an extra `onOpenPath`; raw ipcRenderer is never exposed.
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
-import type { DesktopBridge, FileFilter, MenuCommand, OpenedFile } from "../../../packages/editor/src/platform";
+import type { DesktopBridge, FileFilter, MenuCommand, OpenedFile, UpdateAction, UpdateStatus } from "../../../packages/editor/src/platform";
 import { IPC, type NativeEditCommand } from "./ipc";
 
 interface PnsDesktopApi extends DesktopBridge {
@@ -53,6 +53,17 @@ ipcRenderer.on(IPC.menu, (_e: IpcRendererEvent, command: MenuCommand) => {
   }
 });
 
+const updateListeners = new Set<(status: UpdateStatus) => void>();
+ipcRenderer.on(IPC.updateStatus, (_e: IpcRendererEvent, status: UpdateStatus) => {
+  for (const cb of [...updateListeners]) {
+    try {
+      cb(status);
+    } catch (err) {
+      console.error("pnsDesktop update listener failed", err);
+    }
+  }
+});
+
 ipcRenderer.on(IPC.openPath, (_e: IpcRendererEvent, file: OpenedFile) => {
   for (const cb of [...openPathListeners]) {
     try {
@@ -91,6 +102,19 @@ const api: PnsDesktopApi = {
     return () => {
       openPathListeners.delete(cb);
     };
+  },
+  onUpdate(cb) {
+    updateListeners.add(cb);
+    // The updater may have news from before the editor subscribed.
+    void ipcRenderer.invoke(IPC.updateGet).then((status: UpdateStatus) => {
+      if (updateListeners.has(cb)) cb(status);
+    });
+    return () => {
+      updateListeners.delete(cb);
+    };
+  },
+  updateAction(action: UpdateAction) {
+    ipcRenderer.send(IPC.updateAction, action);
   },
 };
 

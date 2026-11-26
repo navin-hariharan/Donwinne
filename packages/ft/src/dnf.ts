@@ -102,6 +102,10 @@ export function parseDnf(text: string): Literal[][] {
     };
     for (const t of toks) {
       const low = t.toLowerCase();
+      const isNeg = t === "!" || t === "~" || low === "not";
+      const isName = !isNeg && /^[A-Za-z0-9_.:\[\]']/.test(t) && low !== "and" && low !== "or";
+      // Only single events may be negated: `!(a & b)` is not a conjunction of literals.
+      if (neg && !isNeg && !isName) throw new FTError(`A negation must be followed by an event name in "${line}"`);
       if (t === "(") depth++;
       else if (t === ")") {
         if (--depth < 0) throw new FTError(`Unbalanced parentheses in "${line}"`);
@@ -123,8 +127,26 @@ export function parseDnf(text: string): Literal[][] {
 
 /** Write the minimal cut sets of a fault tree as DNF text, e.g. `(a & b) | c`, using event names. */
 export function exportDnf(net: Net): string {
-  const names = new Map((net.faultTree?.nodes ?? []).map((n) => [n.id, n.name]));
-  return minimalCutSets(net)
+  // Names are written so that importDnf reads them back as one event each: characters the DNF
+  // syntax treats as operators or separators (spaces in "Pump A", "#", "/", ...) become "_",
+  // keywords get a "_" suffix, and events whose names clash are numbered.
+  const names = new Map<string, string>();
+  const used = new Set<string>();
+  for (const n of net.faultTree?.nodes ?? []) {
+    if (n.type !== "basic" && n.type !== "undeveloped") continue;
+    let base = (n.name || n.id).replace(/[^A-Za-z0-9_.:\[\]'-]/g, "_");
+    if (!/^[A-Za-z0-9_.:\[\]']/.test(base)) base = `_${base}`;
+    if (["and", "or", "not"].includes(base.toLowerCase())) base += "_";
+    let name = base;
+    for (let i = 2; used.has(name); i++) name = `${base}_${i}`;
+    used.add(name);
+    names.set(n.id, name);
+  }
+  const sets = minimalCutSets(net);
+  // DNF text has no constants: refuse instead of writing text ("" or "()") that cannot be read back.
+  if (!sets.length) throw new FTError("The top event can never occur, so there are no cut sets to write as DNF");
+  if (sets.some((s) => !s.length)) throw new FTError("The top event occurs even when every event works, which DNF text cannot express");
+  return sets
     .map((s) => (s.length === 1 ? names.get(s[0])! : `(${s.map((id) => names.get(id)!).join(" & ")})`))
     .join(" | ");
 }

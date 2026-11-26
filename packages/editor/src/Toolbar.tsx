@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArcKind, FTNodeType, NET_CLASS_LABELS, NetClass, arcKindsFor, isAmbient, isColoured, isFaultTree, timeBase } from "@pns/core";
-import { EXPORT_FORMATS, cmdUnfold, exportProblem, cmdExport, cmdImport, cmdOpen, cmdOpenExample, cmdPrint, cmdSave } from "./fileOps";
+import { EXPORT_FORMATS, cmdTransform, cmdUnfold, exportProblem, cmdExport, cmdImport, cmdOpen, cmdOpenExample, cmdPrint, cmdSave } from "./fileOps";
 import { EXAMPLES } from "./examples";
 import { TOOL_MIME, placeTool, zoomBy, zoomToSelection } from "./Canvas";
 import { autoLayout } from "./layout";
@@ -556,6 +556,8 @@ function AnalyseItems({ close }: { close: () => void }) {
           {!ambient && <Item close={close} onClick={() => useStore.setState({ dialog: "ctl" })}>Model checking (CTL)…</Item>}
           <Item close={close} onClick={() => useStore.setState({ dialog: "slice" })}>Slice the net…</Item>
           {isColoured(netClass) && <Item close={close} onClick={() => void cmdUnfold()}>Unfold to an uncoloured net</Item>}
+          {!ambient && <Item close={close} onClick={() => cmdTransform("reverse")} title="Open the net with every arc pointing the other way">Open the reversed net</Item>}
+          {(netClass === "pt" || netClass === "xpt") && <Item close={close} onClick={() => cmdTransform("dual")} title="Open the net with places and transitions swapped">Open the dual net</Item>}
           {netClass === "coloured" && (
             <Item close={close} onClick={() => setNetClass("apn")} disabled={!editing} title="Read this coloured net as Konios's Ambient Petri net, with step semantics">
               Treat as an APN (ambient net)
